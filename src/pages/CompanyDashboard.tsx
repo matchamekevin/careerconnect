@@ -1,10 +1,15 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Building, Plus, Users, Eye, Edit, Trash2, Calendar } from 'lucide-react';
+import { Building, Plus, Users, Eye, Edit, Trash2 } from 'lucide-react';
+import FCFAInput from '../components/FCFAInput';
+import SelectWithOther from '../components/SelectWithOther';
+import { CONTRACT_TYPES, LOCATIONS_TOGO } from '../constants/formOptions';
+import { useLocalStorage } from '../hooks/useStorage';
 
 const CompanyDashboard = () => {
-  const [activeTab, setActiveTab] = useState('overview');
+  const [activeTab, setActiveTab] = useLocalStorage('companyDashboardActiveTab', 'overview');
+  const [showJobForm, setShowJobForm] = useLocalStorage('companyDashboardShowJobForm', false);
+  const [showProfileEdit, setShowProfileEdit] = useLocalStorage('companyDashboardShowProfileEdit', false);
   const [company, setCompany] = useState<any>(null);
-  const [showJobForm, setShowJobForm] = useState(false);
   const [jobs, setJobs] = useState<any[]>([]);
   const [jobForm, setJobForm] = useState({
     title: '',
@@ -14,8 +19,8 @@ const CompanyDashboard = () => {
     salary: '',
     tags: ''
   });
-  const [jobMessage, setJobMessage] = useState<string|null>(null);
-  const [editJobId, setEditJobId] = useState<number|null>(null);
+  const [jobMessage, setJobMessage] = useState<string | null>(null);
+  const [editJobId, setEditJobId] = useState<number | null>(null);
   const [editJobForm, setEditJobForm] = useState({
     title: '',
     description: '',
@@ -27,7 +32,6 @@ const CompanyDashboard = () => {
   const [applications, setApplications] = useState<any[]>([]);
   const [stats, setStats] = useState({ jobs: 0, applications: 0, views: 0 });
   const [performance, setPerformance] = useState({ vues: 0, candidatures: 0, taux_reponse: 0 });
-  const [showProfileEdit, setShowProfileEdit] = useState(false);
   const [logoSrc, setLogoSrc] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -35,18 +39,57 @@ const CompanyDashboard = () => {
     // Récupérer l'entreprise connectée depuis le sessionStorage
     const companyData = sessionStorage.getItem('companyUser');
     if (companyData) {
-      setCompany(JSON.parse(companyData));
+      const parsedCompany = JSON.parse(companyData);
+      setCompany(parsedCompany);
+
+      // Recharger les données depuis le serveur pour s'assurer d'avoir les infos les plus récentes
+      fetch(`/api/companies/${parsedCompany.id}`)
+        .then(res => res.json())
+        .then(updatedCompany => {
+          setCompany(updatedCompany);
+          sessionStorage.setItem('companyUser', JSON.stringify(updatedCompany));
+
+          // Initialiser le logo si disponible
+          if (updatedCompany.logo_url) {
+            setLogoSrc(`http://localhost:5000${updatedCompany.logo_url}`);
+          }
+        })
+        .catch(error => {
+          console.error('Error fetching company data:', error);
+          // Fallback: utiliser les données du sessionStorage
+          if (parsedCompany.logo_url) {
+            setLogoSrc(`http://localhost:5000${parsedCompany.logo_url}`);
+          }
+        });
     }
   }, []);
 
-  // Charger le logo BLOB à chaque changement de company
+  // Charger le logo à chaque changement de company
   useEffect(() => {
     if (company && company.id) {
-      fetch(`/api/company/${company.id}/logo-blob`).then(async res => {
-        if (!res.ok) return setLogoSrc(null);
-        const blob = await res.blob();
-        setLogoSrc(URL.createObjectURL(blob));
-      });
+      // Essayer d'abord l'approche BLOB
+      fetch(`/api/company/${company.id}/logo-blob`)
+        .then(async res => {
+          if (!res.ok) {
+            // Si l'approche BLOB échoue, utiliser l'URL directe
+            if (company.logo_url) {
+              setLogoSrc(`http://localhost:5000${company.logo_url}`);
+            } else {
+              setLogoSrc(null);
+            }
+            return;
+          }
+          const blob = await res.blob();
+          setLogoSrc(URL.createObjectURL(blob));
+        })
+        .catch(() => {
+          // En cas d'erreur, utiliser l'URL directe si disponible
+          if (company.logo_url) {
+            setLogoSrc(`http://localhost:5000${company.logo_url}`);
+          } else {
+            setLogoSrc(null);
+          }
+        });
     }
   }, [company]);
 
@@ -78,21 +121,82 @@ const CompanyDashboard = () => {
     if (e.target.files && e.target.files[0] && company) {
       const formDataFile = new FormData();
       formDataFile.append('logo', e.target.files[0]);
-      // Upload direct en BLOB
-      await fetch(`/api/company/${company.id}/logo-blob`, {
-        method: 'POST',
-        body: formDataFile
-      });
-      // Recharge le logo
-      fetch(`/api/company/${company.id}/logo-blob`).then(async res => {
-        if (!res.ok) return setLogoSrc(null);
-        const blob = await res.blob();
-        setLogoSrc(URL.createObjectURL(blob));
-      });
+
+      // Essayer d'abord l'upload BLOB
+      try {
+        const blobResponse = await fetch(`/api/company/${company.id}/logo-blob`, {
+          method: 'POST',
+          body: formDataFile
+        });
+
+        if (blobResponse.ok) {
+          // Recharger le logo via BLOB
+          const logoResponse = await fetch(`/api/company/${company.id}/logo-blob`);
+          if (logoResponse.ok) {
+            const blob = await logoResponse.blob();
+            setLogoSrc(URL.createObjectURL(blob));
+
+            // Mettre à jour les données de l'entreprise dans sessionStorage
+            await updateCompanyData();
+            return;
+          }
+        }
+      } catch (error) {
+        console.log('BLOB upload failed, trying traditional upload...');
+      }
+
+      // Si l'approche BLOB échoue, utiliser l'upload traditionnel
+      try {
+        const uploadResponse = await fetch('/api/upload-logo', {
+          method: 'POST',
+          body: formDataFile
+        });
+
+        if (uploadResponse.ok) {
+          const data = await uploadResponse.json();
+          // Mettre à jour le logo_url de l'entreprise
+          await fetch(`/api/company/${company.id}/logo`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ logo_url: data.url })
+          });
+
+          // Mettre à jour l'affichage
+          setLogoSrc(`http://localhost:5000${data.url}`);
+
+          // Mettre à jour les données de l'entreprise dans sessionStorage
+          await updateCompanyData();
+        }
+      } catch (error) {
+        console.error('Logo upload failed:', error);
+      }
     }
   };
 
-  const handleJobFormChange = (e: React.ChangeEvent<HTMLInputElement|HTMLTextAreaElement|HTMLSelectElement>) => {
+  // Fonction pour mettre à jour les données de l'entreprise
+  const updateCompanyData = async () => {
+    if (!company) return;
+
+    try {
+      const response = await fetch(`/api/companies/${company.id}`);
+      if (response.ok) {
+        const updatedCompany = await response.json();
+        setCompany(updatedCompany);
+
+        // Mettre à jour le sessionStorage avec les nouvelles données
+        sessionStorage.setItem('companyUser', JSON.stringify(updatedCompany));
+
+        // Mettre à jour le logo si disponible
+        if (updatedCompany.logo_url) {
+          setLogoSrc(`http://localhost:5000${updatedCompany.logo_url}`);
+        }
+      }
+    } catch (error) {
+      console.error('Error updating company data:', error);
+    }
+  };
+
+  const handleJobFormChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
     setJobForm({ ...jobForm, [e.target.name]: e.target.value });
   };
 
@@ -136,7 +240,7 @@ const CompanyDashboard = () => {
     setShowJobForm(false);
   };
 
-  const handleEditJobFormChange = (e: React.ChangeEvent<HTMLInputElement|HTMLTextAreaElement|HTMLSelectElement>) => {
+  const handleEditJobFormChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
     setEditJobForm({ ...editJobForm, [e.target.name]: e.target.value });
   };
 
@@ -165,6 +269,8 @@ const CompanyDashboard = () => {
       default: return 'bg-gray-100 text-gray-800';
     }
   };
+
+
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -224,41 +330,37 @@ const CompanyDashboard = () => {
           <div className="flex border-b border-gray-200">
             <button
               onClick={() => setActiveTab('overview')}
-              className={`px-6 py-4 font-medium ${
-                activeTab === 'overview'
-                  ? 'border-b-2 border-blue-500 text-blue-600'
-                  : 'text-gray-500 hover:text-gray-700'
-              }`}
+              className={`px-6 py-4 font-medium ${activeTab === 'overview'
+                ? 'border-b-2 border-blue-500 text-blue-600'
+                : 'text-gray-500 hover:text-gray-700'
+                }`}
             >
               Vue d'ensemble
             </button>
             <button
               onClick={() => setActiveTab('jobs')}
-              className={`px-6 py-4 font-medium ${
-                activeTab === 'jobs'
-                  ? 'border-b-2 border-blue-500 text-blue-600'
-                  : 'text-gray-500 hover:text-gray-700'
-              }`}
+              className={`px-6 py-4 font-medium ${activeTab === 'jobs'
+                ? 'border-b-2 border-blue-500 text-blue-600'
+                : 'text-gray-500 hover:text-gray-700'
+                }`}
             >
               Mes offres
             </button>
             <button
               onClick={() => setActiveTab('applications')}
-              className={`px-6 py-4 font-medium ${
-                activeTab === 'applications'
-                  ? 'border-b-2 border-blue-500 text-blue-600'
-                  : 'text-gray-500 hover:text-gray-700'
-              }`}
+              className={`px-6 py-4 font-medium ${activeTab === 'applications'
+                ? 'border-b-2 border-blue-500 text-blue-600'
+                : 'text-gray-500 hover:text-gray-700'
+                }`}
             >
               Candidatures
             </button>
             <button
               onClick={() => setActiveTab('profile')}
-              className={`px-6 py-4 font-medium ${
-                activeTab === 'profile'
-                  ? 'border-b-2 border-blue-500 text-blue-600'
-                  : 'text-gray-500 hover:text-gray-700'
-              }`}
+              className={`px-6 py-4 font-medium ${activeTab === 'profile'
+                ? 'border-b-2 border-blue-500 text-blue-600'
+                : 'text-gray-500 hover:text-gray-700'
+                }`}
             >
               Profil entreprise
             </button>
@@ -302,7 +404,19 @@ const CompanyDashboard = () => {
 
               {/* Recent Applications dynamiques */}
               <div className="bg-white rounded-lg shadow-sm p-6">
-                <h3 className="text-lg font-semibold text-gray-900 mb-4">Candidatures récentes</h3>
+                <div className="flex items-center justify-between mb-4">
+                  <h3 className="text-lg font-semibold text-gray-900">Candidatures récentes</h3>
+                  <div className="flex items-center gap-2">
+                    <span className="px-2 py-1 bg-blue-100 text-blue-800 rounded-full text-xs font-medium">
+                      {applications.length} au total
+                    </span>
+                    {applications.filter(app => app.status === 'Nouveau' || app.status === 'En cours').length > 0 && (
+                      <span className="px-2 py-1 bg-yellow-100 text-yellow-800 rounded-full text-xs font-medium">
+                        {applications.filter(app => app.status === 'Nouveau' || app.status === 'En cours').length} en attente
+                      </span>
+                    )}
+                  </div>
+                </div>
                 <div className="space-y-4">
                   {applications.slice(0, 3).map((app) => (
                     <div key={app.id} className="flex items-center justify-between p-4 border border-gray-200 rounded-lg">
@@ -315,7 +429,7 @@ const CompanyDashboard = () => {
                         <span className={`px-2 py-1 rounded-full text-xs font-medium ${getStatusColor(app.status)}`}>
                           {app.status}
                         </span>
-                        <p className="text-xs text-gray-500 mt-1">{app.applied_at?.slice(0,10)}</p>
+                        <p className="text-xs text-gray-500 mt-1">{app.applied_at?.slice(0, 10)}</p>
                       </div>
                     </div>
                   ))}
@@ -373,17 +487,33 @@ const CompanyDashboard = () => {
               <form onSubmit={handleJobSubmit} className="space-y-4">
                 <input name="title" value={jobForm.title} onChange={handleJobFormChange} required placeholder="Titre du poste" className="w-full border px-3 py-2 rounded" />
                 <input name="company" value={company?.name || ''} disabled className="w-full border px-3 py-2 rounded bg-gray-100" placeholder="Nom de l'entreprise" />
-                <select name="type" value={jobForm.type} onChange={handleJobFormChange} required className="w-full border px-3 py-2 rounded">
-                  <option value="">Type de contrat</option>
-                  <option value="Stage">Stage</option>
-                  <option value="Temps partiel">Temps partiel</option>
-                  <option value="CDI">CDI</option>
-                  <option value="CDD">CDD</option>
-                </select>
+                <SelectWithOther
+                  value={jobForm.type}
+                  onChange={(value) => setJobForm({ ...jobForm, type: value })}
+                  options={CONTRACT_TYPES}
+                  placeholder="Type de contrat"
+                  name="type"
+                  required
+                  className="w-full border px-3 py-2 rounded"
+                />
                 <textarea name="description" value={jobForm.description} onChange={handleJobFormChange} required placeholder="Description du poste" className="w-full border px-3 py-2 rounded" />
                 <input name="tags" value={jobForm.tags} onChange={handleJobFormChange} placeholder="Tags (ex: Marketing, Digital, Réseaux sociaux)" className="w-full border px-3 py-2 rounded" />
-                <input name="location" value={jobForm.location} onChange={handleJobFormChange} required placeholder="Lieu (ex: Lomé)" className="w-full border px-3 py-2 rounded" />
-                <input name="salary" value={jobForm.salary} onChange={handleJobFormChange} placeholder="Salaire (ex: 50,000 - 75,000 FCFA)" className="w-full border px-3 py-2 rounded" />
+                <SelectWithOther
+                  value={jobForm.location}
+                  onChange={(value) => setJobForm({ ...jobForm, location: value })}
+                  options={LOCATIONS_TOGO}
+                  placeholder="Lieu (ex: Lomé)"
+                  name="location"
+                  required
+                  className="w-full border px-3 py-2 rounded"
+                />
+                <FCFAInput
+                  value={jobForm.salary}
+                  onChange={(value) => setJobForm({ ...jobForm, salary: value })}
+                  placeholder="Salaire (ex: 50,000 - 75,000 FCFA)"
+                  name="salary"
+                  className="w-full border px-3 py-2 rounded"
+                />
                 <button type="submit" className="w-full bg-blue-600 text-white py-2 rounded hover:bg-blue-700">Publier</button>
               </form>
             </div>
@@ -409,7 +539,7 @@ const CompanyDashboard = () => {
                     <div>
                       <h4 className="font-medium text-gray-900">{job.title}</h4>
                       <p className="text-sm text-gray-600">{job.location} • {job.type}</p>
-                      <p className="text-xs text-gray-500">Publié le {job.posted_at?.slice(0,10)}</p>
+                      <p className="text-xs text-gray-500">Publié le {job.posted_at?.slice(0, 10)}</p>
                     </div>
                     <span className={`px-3 py-1 rounded-full text-sm font-medium ${getStatusColor('Active')}`}>Active</span>
                   </div>
@@ -429,9 +559,10 @@ const CompanyDashboard = () => {
 
         {activeTab === 'applications' && (
           <div className="bg-white rounded-lg shadow-sm p-6">
-            <h3 className="text-lg font-semibold text-gray-900 mb-6">Candidatures reçues</h3>
-            <div className="space-y-4">
-              {applications.length === 0 && <div className="text-gray-500">Aucune candidature reçue.</div>}
+            <h3 className="text-lg font-semibold text-gray-900 mb-6">Candidatures reçues</h3>            <div className="space-y-4">
+              {applications.length === 0 && (
+                <div className="text-center py-8 text-gray-500">Aucune candidature reçue.</div>
+              )}
               {applications.map((app) => (
                 <div key={app.id} className="flex items-center justify-between p-4 border border-gray-200 rounded-lg">
                   <div className="flex-1">
@@ -445,7 +576,7 @@ const CompanyDashboard = () => {
                         <span className={`px-3 py-1 rounded-full text-sm font-medium ${getStatusColor(app.status)}`}>
                           {app.status}
                         </span>
-                        <p className="text-xs text-gray-500 mt-1">Candidature du {app.applied_at?.slice(0,10)}</p>
+                        <p className="text-xs text-gray-500 mt-1">Candidature du {app.applied_at?.slice(0, 10)}</p>
                       </div>
                     </div>
                     <div className="flex space-x-3 mt-3">
@@ -504,15 +635,31 @@ const CompanyDashboard = () => {
               <form onSubmit={handleEditJobSubmit} className="space-y-4">
                 <input name="title" value={editJobForm.title} onChange={handleEditJobFormChange} required placeholder="Titre du poste" className="w-full border px-3 py-2 rounded" />
                 <textarea name="description" value={editJobForm.description} onChange={handleEditJobFormChange} required placeholder="Description" className="w-full border px-3 py-2 rounded" />
-                <input name="location" value={editJobForm.location} onChange={handleEditJobFormChange} required placeholder="Lieu" className="w-full border px-3 py-2 rounded" />
-                <select name="type" value={editJobForm.type} onChange={handleEditJobFormChange} required className="w-full border px-3 py-2 rounded">
-                  <option value="">Type de contrat</option>
-                  <option value="Stage">Stage</option>
-                  <option value="Temps partiel">Temps partiel</option>
-                  <option value="CDI">CDI</option>
-                  <option value="CDD">CDD</option>
-                </select>
-                <input name="salary" value={editJobForm.salary} onChange={handleEditJobFormChange} placeholder="Salaire (optionnel)" className="w-full border px-3 py-2 rounded" />
+                <SelectWithOther
+                  value={editJobForm.location}
+                  onChange={(value) => setEditJobForm({ ...editJobForm, location: value })}
+                  options={LOCATIONS_TOGO}
+                  placeholder="Lieu"
+                  name="location"
+                  required
+                  className="w-full border px-3 py-2 rounded"
+                />
+                <SelectWithOther
+                  value={editJobForm.type}
+                  onChange={(value) => setEditJobForm({ ...editJobForm, type: value })}
+                  options={CONTRACT_TYPES}
+                  placeholder="Type de contrat"
+                  name="type"
+                  required
+                  className="w-full border px-3 py-2 rounded"
+                />
+                <FCFAInput
+                  value={editJobForm.salary}
+                  onChange={(value) => setEditJobForm({ ...editJobForm, salary: value })}
+                  placeholder="Salaire (ex: 50,000 - 75,000 FCFA)"
+                  name="salary"
+                  className="w-full border px-3 py-2 rounded"
+                />
                 <input name="tags" value={editJobForm.tags} onChange={handleEditJobFormChange} placeholder="Tags (séparés par des virgules)" className="w-full border px-3 py-2 rounded" />
                 <button type="submit" className="w-full bg-blue-600 text-white py-2 rounded hover:bg-blue-700">Enregistrer</button>
               </form>
@@ -535,7 +682,7 @@ const ProfileForm = ({ company, setCompany, onClose }: { company: any, setCompan
     size: company.size || '',
     website_url: company.website_url || ''
   });
-  const [message, setMessage] = useState<string|null>(null);
+  const [message, setMessage] = useState<string | null>(null);
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setForm({ ...form, [e.target.name]: e.target.value });
   };

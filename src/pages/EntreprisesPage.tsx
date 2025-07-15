@@ -4,8 +4,8 @@ import CompanyProfileModal from '../components/CompanyProfileModal';
 const EntreprisesPage = () => {
   const [companies, setCompanies] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string|null>(null);
-  const [selectedCompanyId, setSelectedCompanyId] = useState<number|null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [selectedCompanyId, setSelectedCompanyId] = useState<number | null>(null);
 
   useEffect(() => {
     fetch('/api/companies')
@@ -36,7 +36,29 @@ const EntreprisesPage = () => {
             className="bg-white rounded-lg shadow p-6 flex flex-col items-center cursor-pointer hover:bg-gray-50 transition"
             onClick={() => setSelectedCompanyId(c.id)}
           >
-            {c.logo_url && <img src={c.logo_url} alt="Logo" className="w-16 h-16 rounded-full object-cover mb-3" />}
+            <div className="w-16 h-16 rounded-full flex items-center justify-center mb-3">
+              {c.logo_url ? (
+                <img
+                  src={`http://localhost:5000${c.logo_url}`}
+                  alt="Logo"
+                  className="w-16 h-16 rounded-full object-cover"
+                  onError={(e) => {
+                    e.currentTarget.style.display = 'none';
+                    const parent = e.currentTarget.parentElement;
+                    if (parent) {
+                      parent.classList.add('bg-blue-100');
+                      parent.innerHTML = `<span class="text-xl font-bold text-blue-600">${c.name ? c.name[0].toUpperCase() : '?'}</span>`;
+                    }
+                  }}
+                />
+              ) : (
+                <div className="w-16 h-16 rounded-full bg-blue-100 flex items-center justify-center">
+                  <span className="text-xl font-bold text-blue-600">
+                    {c.name ? c.name[0].toUpperCase() : '?'}
+                  </span>
+                </div>
+              )}
+            </div>
             <h2 className="text-xl font-semibold mb-1">{c.name}</h2>
             <p className="text-gray-500 mb-1">{c.sector}</p>
             <p className="text-gray-500 mb-1">{c.address}</p>

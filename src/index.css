@@ -1,3 +1,29 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+/* Empêcher le défilement excessif */
+html {
+  overscroll-behavior: none;
+  overflow-x: hidden;
+}
+
+body {
+  overscroll-behavior: none;
+  overflow-x: hidden;
+}
+
+/* Empêcher le défilement élastique sur tous les conteneurs */
+* {
+  overscroll-behavior: none;
+}
+
+/* Empêcher le défilement au-delà de la fin du contenu */
+html, body {
+  height: 100%;
+}
+
+#root {
+  min-height: 100vh;
+  overflow-x: hidden;
+}

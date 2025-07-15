@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import ApplyJobModal from './ApplyJobModal';
 
 interface JobDetailsModalProps {
@@ -24,6 +25,8 @@ const JobDetailsModal: React.FC<JobDetailsModalProps> = ({ jobId, onClose }) => 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [showApply, setShowApply] = useState(false);
+  const [showLoginMessage, setShowLoginMessage] = useState(false);
+  const navigate = useNavigate();
 
   useEffect(() => {
     if (jobId) {
@@ -44,11 +47,33 @@ const JobDetailsModal: React.FC<JobDetailsModalProps> = ({ jobId, onClose }) => 
     }
   }, [jobId]);
 
+  const handleApplyClick = () => {
+    // Vérifier si l'étudiant est connecté
+    const studentUser = sessionStorage.getItem('studentUser');
+
+    if (!studentUser) {
+      // Sauvegarder l'ID du job pour après la connexion
+      sessionStorage.setItem('pendingJobApplication', jobId?.toString() || '');
+
+      // Afficher un message et rediriger vers la page de connexion
+      setShowLoginMessage(true);
+
+      // Rediriger après 2 secondes
+      setTimeout(() => {
+        onClose();
+        navigate('/student-auth?redirect=apply');
+      }, 2000);
+    } else {
+      // L'utilisateur est connecté, procéder à la candidature normale
+      setShowApply(true);
+    }
+  };
+
   if (!jobId) return null;
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-40 flex items-center justify-center z-50">
-      <div className="bg-white rounded-lg shadow-lg max-w-lg w-full p-8 relative">
+    <div className="fixed inset-0 bg-black bg-opacity-40 flex items-center justify-center z-50" onClick={onClose}>
+      <div className="bg-white rounded-lg shadow-lg max-w-lg w-full p-8 relative" onClick={(e) => e.stopPropagation()}>
         <button className="absolute top-2 right-2 text-gray-400 hover:text-gray-600 text-2xl" onClick={onClose}>&times;</button>
         {loading && <div>Chargement...</div>}
         {error && <div className="text-red-500">{error}</div>}
@@ -79,7 +104,17 @@ const JobDetailsModal: React.FC<JobDetailsModalProps> = ({ jobId, onClose }) => 
                 ))}
               </div>
             </div>
-            <button className="w-full bg-blue-600 text-white py-2 rounded hover:bg-blue-700 mt-4" onClick={() => setShowApply(true)}>
+
+            {/* Message de connexion */}
+            {showLoginMessage && (
+              <div className="mb-4 p-4 bg-blue-50 border border-blue-200 rounded-lg">
+                <p className="text-blue-800 text-center">
+                  🔐 Vous devez être connecté pour postuler. Redirection vers la page de connexion...
+                </p>
+              </div>
+            )}
+
+            <button className="w-full bg-blue-600 text-white py-2 rounded hover:bg-blue-700 mt-4" onClick={handleApplyClick}>
               Postuler
             </button>
             {showApply && <ApplyJobModal jobId={job.id} onClose={() => setShowApply(false)} />}

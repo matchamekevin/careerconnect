@@ -7,6 +7,7 @@ export default defineConfig({
   server: {
     proxy: {
       '/api': 'http://localhost:5000', // proxy toutes les requêtes /api
+      '/uploads': 'http://localhost:5000', // proxy pour les logos et fichiers statiques
     },
   },
 });

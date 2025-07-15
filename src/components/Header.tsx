@@ -1,14 +1,20 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
-import { Menu, X, Briefcase, User, Building, UserCircle } from 'lucide-react';
+import { Menu, X, User, Building, ChevronDown, LogOut } from 'lucide-react';
 
 const Header = () => {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
+  const [isAdminDropdownOpen, setIsAdminDropdownOpen] = useState(false);
+  const [isStudentDropdownOpen, setIsStudentDropdownOpen] = useState(false);
+  const [isCompanyDropdownOpen, setIsCompanyDropdownOpen] = useState(false);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [isAdmin, setIsAdmin] = useState(!!sessionStorage.getItem('adminUser'));
-  const [stats, setStats] = useState<{ companies: number; jobs: number; students: number }>({ companies: 0, jobs: 0, students: 0 });
+
   const navigate = useNavigate();
   const location = useLocation();
+  const adminDropdownRef = useRef<HTMLDivElement>(null);
+  const studentDropdownRef = useRef<HTMLDivElement>(null);
+  const companyDropdownRef = useRef<HTMLDivElement>(null);
 
   // Met à jour l'état à chaque navigation ou changement de session
   useEffect(() => {
@@ -23,96 +29,210 @@ const Header = () => {
     return () => window.removeEventListener('storage', checkAuth);
   }, [location]);
 
-  // Récupère les statistiques depuis l'API
+
+  // Gestion du clic en dehors des menus déroulants
   useEffect(() => {
-    fetch('/api/admin/stats')
-      .then(res => res.json())
-      .then(data => {
-        setStats({ companies: data.companies, jobs: data.jobs, students: data.students });
-        console.log('Stats header:', data);
-      })
-      .catch(() => setStats({ companies: 0, jobs: 0, students: 0 }));
-  }, [location]);
+    const handleClickOutside = (event: MouseEvent) => {
+      if (adminDropdownRef.current && !adminDropdownRef.current.contains(event.target as Node)) {
+        setIsAdminDropdownOpen(false);
+      }
+      if (studentDropdownRef.current && !studentDropdownRef.current.contains(event.target as Node)) {
+        setIsStudentDropdownOpen(false);
+      }
+      if (companyDropdownRef.current && !companyDropdownRef.current.contains(event.target as Node)) {
+        setIsCompanyDropdownOpen(false);
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, []);
+
 
   const handleLogout = () => {
     sessionStorage.removeItem('studentUser');
     sessionStorage.removeItem('companyUser');
+    sessionStorage.removeItem('adminUser');
     setIsAuthenticated(false);
+    setIsAdmin(false);
+    setIsAdminDropdownOpen(false);
+    setIsStudentDropdownOpen(false);
+    setIsCompanyDropdownOpen(false);
     navigate('/');
     window.location.reload();
   };
 
-  // Ajout d'un bouton dashboard selon le type de session
-  let dashboardLink = null;
-  // On ne montre PAS le bouton admin sur la page d'accueil
-  if (isAdmin && location.pathname !== "/") {
-    dashboardLink = (
-      <Link to="/admin-dashboard" className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors ml-2">
-        Dashboard Admin
-      </Link>
-    );
-  } else if (isAuthenticated) {
-    const student = sessionStorage.getItem('studentUser');
-    const company = sessionStorage.getItem('companyUser');
-    if (student) {
-      dashboardLink = (
-        <Link to="/student-dashboard" className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors ml-2">
-          Mon Dashboard
-        </Link>
-      );
-    } else if (company) {
-      dashboardLink = (
-        <Link to="/company-dashboard" className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors ml-2">
-          Mon Dashboard
-        </Link>
-      );
+  // Fonction utilitaire pour obtenir l'URL de l'image avec fallback
+  const getImageUrl = (url: string) => {
+    if (!url) return null;
+    try {
+      // Nettoie l'URL et encode les espaces
+      const cleanUrl = url.trim().replace(/\s+/g, '%20');
+      return cleanUrl;
+    } catch {
+      return null;
     }
-  }
+  };
 
-  // Affichage infos utilisateur connecté (admin prioritaire)
-  let userInfo = null;
-  let userLogo = null;
-  // On ne montre PAS le logo admin sur la page d'accueil
-  if (isAdmin && location.pathname !== "/") {
+  // Menu déroulant admin
+  const AdminDropdown = () => {
+    if (!isAdmin) return null;
+
     const admin = JSON.parse(sessionStorage.getItem('adminUser') || '{}');
     const email = admin?.email || '';
     const name = admin?.first_name || 'Super Admin';
-    userLogo = <div className="w-8 h-8 rounded-full bg-gray-300 flex items-center justify-center text-blue-700 font-bold">A</div>;
-    userInfo = (
-      <div className="flex items-center gap-2 ml-4">
-        {userLogo}
-        <div className="flex flex-col text-xs text-gray-700">
-          <span className="font-semibold">{name}</span>
-          <span className="text-gray-500">{email}</span>
-        </div>
+
+    return (
+      <div className="relative" ref={adminDropdownRef}>
+        <button
+          onClick={() => setIsAdminDropdownOpen(!isAdminDropdownOpen)}
+          className="flex items-center gap-2 p-2 rounded-lg hover:bg-gray-100 transition-colors"
+        >
+          <div className="w-8 h-8 rounded-full bg-blue-600 flex items-center justify-center text-white font-bold">
+            A
+          </div>
+          <ChevronDown className={`h-4 w-4 transition-transform ${isAdminDropdownOpen ? 'rotate-180' : ''}`} />
+        </button>
+
+        {isAdminDropdownOpen && (
+          <div className="absolute right-0 mt-2 w-64 bg-white rounded-lg shadow-lg border border-gray-200 py-2 z-50">
+            <div className="px-4 py-2 border-b border-gray-200">
+              <div className="flex flex-col text-sm">
+                <span className="font-semibold text-gray-900">{name}</span>
+                <span className="text-gray-500 text-xs">{email}</span>
+                <span className="text-xs text-blue-700 font-medium mt-1">Administrateur</span>
+              </div>
+            </div>
+            <button
+              onClick={handleLogout}
+              className="flex items-center gap-2 w-full px-4 py-2 text-sm text-red-600 hover:bg-red-50 transition-colors"
+            >
+              <LogOut className="h-4 w-4" />
+              Déconnexion
+            </button>
+          </div>
+        )}
       </div>
     );
-  } else if (isAuthenticated) {
+  };
+
+  // Menu déroulant étudiant
+  const StudentDropdown = () => {
     const student = sessionStorage.getItem('studentUser');
-    const company = sessionStorage.getItem('companyUser');
-    let user = null;
-    if (student) user = JSON.parse(student);
-    if (company) user = JSON.parse(company);
-    const email = user?.email || '';
-    const name = user?.first_name || user?.companyName || '';
-    const logoUrl = user?.profile_picture_url || user?.logo_url || '';
-    // Logo : image si dispo, sinon initiale
-    if (logoUrl) {
-      userLogo = <img src={logoUrl} alt="logo" className="w-8 h-8 rounded-full object-cover" />;
-    } else {
-      const initial = name ? name[0].toUpperCase() : (email[0]?.toUpperCase() || '?');
-      userLogo = <div className="w-8 h-8 rounded-full bg-blue-200 flex items-center justify-center text-blue-700 font-bold">{initial}</div>;
-    }
-    userInfo = (
-      <div className="flex items-center gap-2 ml-4">
-        {userLogo}
-        <div className="flex flex-col text-xs text-gray-700">
-          <span className="font-semibold">{name || email}</span>
-          <span className="text-gray-500">{email}</span>
-        </div>
+    if (!student || isAdmin) return null;
+
+    const userData = JSON.parse(student);
+    const email = userData?.email || '';
+    const name = userData?.first_name || '';
+    const logoUrl = userData?.profile_picture_url || '';
+    const cleanLogoUrl = getImageUrl(logoUrl);
+
+    return (
+      <div className="relative" ref={studentDropdownRef}>
+        <button
+          onClick={() => setIsStudentDropdownOpen(!isStudentDropdownOpen)}
+          className="flex items-center gap-2 p-2 rounded-lg hover:bg-gray-100 transition-colors"
+        >
+          {cleanLogoUrl ? (
+            <img
+              src={cleanLogoUrl}
+              alt={`Photo de profil de ${name}`}
+              className="w-8 h-8 rounded-full object-cover"
+              onError={(e) => {
+                const target = e.target as HTMLImageElement;
+                target.style.display = 'none';
+                const fallback = target.nextElementSibling as HTMLElement;
+                if (fallback) fallback.style.display = 'flex';
+              }}
+            />
+          ) : null}
+          <div className={`w-8 h-8 rounded-full bg-blue-600 flex items-center justify-center text-white font-bold ${cleanLogoUrl ? 'hidden' : ''}`}>
+            {name ? name[0].toUpperCase() : (email[0]?.toUpperCase() || 'E')}
+          </div>
+          <ChevronDown className={`h-4 w-4 text-blue-600 transition-transform ${isStudentDropdownOpen ? 'rotate-180' : ''}`} />
+        </button>
+
+        {isStudentDropdownOpen && (
+          <div className="absolute right-0 mt-2 w-64 bg-white rounded-lg shadow-lg border border-gray-200 py-2 z-50">
+            <div className="px-4 py-2 border-b border-gray-200">
+              <div className="flex flex-col text-sm">
+                <span className="font-semibold text-gray-900">{name || email}</span>
+                <span className="text-gray-500 text-xs">{email}</span>
+                <span className="text-xs text-blue-700 font-medium mt-1">Étudiant</span>
+              </div>
+            </div>
+            <button
+              onClick={handleLogout}
+              className="flex items-center gap-2 w-full px-4 py-2 text-sm text-red-600 hover:bg-red-50 transition-colors"
+            >
+              <LogOut className="h-4 w-4" />
+              Déconnexion
+            </button>
+          </div>
+        )}
       </div>
     );
-  }
+  };
+
+  // Menu déroulant entreprise
+  const CompanyDropdown = () => {
+    const company = sessionStorage.getItem('companyUser');
+    if (!company || isAdmin) return null;
+
+    const userData = JSON.parse(company);
+    const email = userData?.email || '';
+    const name = userData?.companyName || '';
+    const logoUrl = userData?.logo_url || '';
+    const cleanLogoUrl = getImageUrl(logoUrl);
+
+    return (
+      <div className="relative" ref={companyDropdownRef}>
+        <button
+          onClick={() => setIsCompanyDropdownOpen(!isCompanyDropdownOpen)}
+          className="flex items-center gap-2 p-2 rounded-lg hover:bg-gray-100 transition-colors"
+        >
+          {cleanLogoUrl ? (
+            <img
+              src={cleanLogoUrl}
+              alt={`Logo de ${name}`}
+              className="w-8 h-8 rounded-full object-cover"
+              onError={(e) => {
+                const target = e.target as HTMLImageElement;
+                target.style.display = 'none';
+                const fallback = target.nextElementSibling as HTMLElement;
+                if (fallback) fallback.style.display = 'flex';
+              }}
+            />
+          ) : null}
+          <div className={`w-8 h-8 rounded-full bg-blue-600 flex items-center justify-center text-white font-bold ${cleanLogoUrl ? 'hidden' : ''}`}>
+            {name ? name[0].toUpperCase() : (email[0]?.toUpperCase() || 'E')}
+          </div>
+          <ChevronDown className={`h-4 w-4 text-blue-600 transition-transform ${isCompanyDropdownOpen ? 'rotate-180' : ''}`} />
+        </button>
+
+        {isCompanyDropdownOpen && (
+          <div className="absolute right-0 mt-2 w-64 bg-white rounded-lg shadow-lg border border-gray-200 py-2 z-50">
+            <div className="px-4 py-2 border-b border-gray-200">
+              <div className="flex flex-col text-sm">
+                <span className="font-semibold text-gray-900">{name || email}</span>
+                <span className="text-gray-500 text-xs">{email}</span>
+                <span className="text-xs text-blue-700 font-medium mt-1">Entreprise</span>
+              </div>
+            </div>
+            <button
+              onClick={handleLogout}
+              className="flex items-center gap-2 w-full px-4 py-2 text-sm text-red-600 hover:bg-red-50 transition-colors"
+            >
+              <LogOut className="h-4 w-4" />
+              Déconnexion
+            </button>
+          </div>
+        )}
+      </div>
+    );
+  };
 
   return (
     <header className="bg-white shadow-md sticky top-0 z-50">
@@ -120,8 +240,7 @@ const Header = () => {
         <div className="flex justify-between items-center h-16">
           {/* Logo */}
           <Link to="/" className="flex items-center space-x-2">
-            {/* Anciennement: <Briefcase className="h-8 w-8 text-blue-700" /> */}
-            <Building className="h-8 w-8 text-blue-700" /> {/* Changement ici */}
+            <Building className="h-8 w-8 text-blue-700" />
             <span className="text-xl font-bold text-gray-900">JobTogo Étudiant</span>
           </Link>
 
@@ -139,7 +258,23 @@ const Header = () => {
             <Link to="/contact" className="text-gray-700 hover:text-blue-700 transition-colors">
               Contact
             </Link>
+            {isAdmin && (
+              <Link to="/admin-dashboard" className="text-blue-600 hover:text-blue-700 transition-colors font-semibold">
+                Dashboard Admin
+              </Link>
+            )}
+            {isAuthenticated && !isAdmin && sessionStorage.getItem('studentUser') && (
+              <Link to="/student-dashboard" className="text-blue-600 hover:text-blue-700 transition-colors font-semibold">
+                Mon Dashboard
+              </Link>
+            )}
+            {isAuthenticated && !isAdmin && sessionStorage.getItem('companyUser') && (
+              <Link to="/company-dashboard" className="text-blue-600 hover:text-blue-700 transition-colors font-semibold">
+                Dashboard Entreprise
+              </Link>
+            )}
           </nav>
+
 
           {/* Auth Buttons - Desktop */}
           {!isAuthenticated && !isAdmin && (
@@ -160,26 +295,23 @@ const Header = () => {
               </Link>
             </div>
           )}
-          {(isAuthenticated || isAdmin) && (
-            <div className="flex items-center gap-2">
-              {isAdmin && dashboardLink}
-              {!isAdmin && dashboardLink}
-              {userInfo}
-              <button
-                onClick={() => {
-                  setIsMenuOpen(false);
-                  sessionStorage.removeItem('adminUser');
-                  sessionStorage.removeItem('studentUser');
-                  sessionStorage.removeItem('companyUser');
-                  setIsAuthenticated(false);
-                  setIsAdmin(false);
-                  navigate('/');
-                  window.location.reload();
-                }}
-                className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors ml-4"
-              >
-                Déconnexion
-              </button>
+
+          {/* User Info - Desktop */}
+          {isAdmin && (
+            <div className="hidden md:flex items-center">
+              <AdminDropdown />
+            </div>
+          )}
+
+          {isAuthenticated && !isAdmin && sessionStorage.getItem('studentUser') && (
+            <div className="hidden md:flex items-center">
+              <StudentDropdown />
+            </div>
+          )}
+
+          {isAuthenticated && !isAdmin && sessionStorage.getItem('companyUser') && (
+            <div className="hidden md:flex items-center">
+              <CompanyDropdown />
             </div>
           )}
 
@@ -224,6 +356,34 @@ const Header = () => {
               >
                 Contact
               </Link>
+              {isAdmin && (
+                <Link
+                  to="/admin-dashboard"
+                  className="text-blue-600 hover:text-blue-700 transition-colors font-semibold"
+                  onClick={() => setIsMenuOpen(false)}
+                >
+                  Dashboard Admin
+                </Link>
+              )}
+              {isAuthenticated && !isAdmin && sessionStorage.getItem('studentUser') && (
+                <Link
+                  to="/student-dashboard"
+                  className="text-blue-600 hover:text-blue-700 transition-colors font-semibold"
+                  onClick={() => setIsMenuOpen(false)}
+                >
+                  Mon Dashboard
+                </Link>
+              )}
+              {isAuthenticated && !isAdmin && sessionStorage.getItem('companyUser') && (
+                <Link
+                  to="/company-dashboard"
+                  className="text-blue-600 hover:text-blue-700 transition-colors font-semibold"
+                  onClick={() => setIsMenuOpen(false)}
+                >
+                  Dashboard Entreprise
+                </Link>
+              )}
+
               {!isAuthenticated && !isAdmin && (
                 <div className="flex flex-col space-y-2 pt-4 border-t border-gray-200">
                   <Link
@@ -244,22 +404,131 @@ const Header = () => {
                   </Link>
                 </div>
               )}
-              {(isAuthenticated || isAdmin) && (
-                <button
-                  onClick={() => {
-                    setIsMenuOpen(false);
-                    sessionStorage.removeItem('adminUser');
-                    sessionStorage.removeItem('studentUser');
-                    sessionStorage.removeItem('companyUser');
-                    setIsAuthenticated(false);
-                    setIsAdmin(false);
-                    navigate('/');
-                    window.location.reload();
-                  }}
-                  className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors mt-4"
-                >
-                  Déconnexion
-                </button>
+
+              {/* Mobile Admin Info */}
+              {isAdmin && (
+                <div className="pt-4 border-t border-gray-200">
+                  <div className="flex items-center gap-2 mb-3">
+                    <div className="w-8 h-8 rounded-full bg-blue-600 flex items-center justify-center text-white font-bold">
+                      A
+                    </div>
+                    <div className="flex flex-col text-sm">
+                      <span className="font-semibold text-gray-900">
+                        {JSON.parse(sessionStorage.getItem('adminUser') || '{}')?.first_name || 'Super Admin'}
+                      </span>
+                      <span className="text-xs text-blue-700 font-medium">Administrateur</span>
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => {
+                      setIsMenuOpen(false);
+                      handleLogout();
+                    }}
+                    className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors w-full"
+                  >
+                    <LogOut className="h-4 w-4" />
+                    Déconnexion
+                  </button>
+                </div>
+              )}
+
+              {/* Mobile Non-Admin User */}
+              {isAuthenticated && !isAdmin && sessionStorage.getItem('studentUser') && (
+                <div className="pt-4 border-t border-gray-200">
+                  <div className="flex items-center gap-2 mb-3">
+                    {(() => {
+                      const student = JSON.parse(sessionStorage.getItem('studentUser') || '{}');
+                      const name = student?.first_name || '';
+                      const email = student?.email || '';
+                      const logoUrl = student?.profile_picture_url || '';
+                      const cleanLogoUrl = getImageUrl(logoUrl);
+
+                      return (
+                        <>
+                          {cleanLogoUrl ? (
+                            <img
+                              src={cleanLogoUrl}
+                              alt={`Photo de profil de ${name}`}
+                              className="w-8 h-8 rounded-full object-cover"
+                              onError={(e) => {
+                                const target = e.target as HTMLImageElement;
+                                target.style.display = 'none';
+                                const fallback = target.nextElementSibling as HTMLElement;
+                                if (fallback) fallback.style.display = 'flex';
+                              }}
+                            />
+                          ) : null}
+                          <div className={`w-8 h-8 rounded-full bg-blue-600 flex items-center justify-center text-white font-bold ${cleanLogoUrl ? 'hidden' : ''}`}>
+                            {name ? name[0].toUpperCase() : (email[0]?.toUpperCase() || 'E')}
+                          </div>
+                          <div className="flex flex-col text-sm">
+                            <span className="font-semibold text-gray-900">{name || email}</span>
+                            <span className="text-xs text-blue-700 font-medium">Étudiant</span>
+                          </div>
+                        </>
+                      );
+                    })()}
+                  </div>
+                  <button
+                    onClick={() => {
+                      setIsMenuOpen(false);
+                      handleLogout();
+                    }}
+                    className="flex items-center gap-2 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors w-full"
+                  >
+                    <LogOut className="h-4 w-4" />
+                    Déconnexion
+                  </button>
+                </div>
+              )}
+
+              {isAuthenticated && !isAdmin && sessionStorage.getItem('companyUser') && (
+                <div className="pt-4 border-t border-gray-200">
+                  <div className="flex items-center gap-2 mb-3">
+                    {(() => {
+                      const company = JSON.parse(sessionStorage.getItem('companyUser') || '{}');
+                      const name = company?.companyName || '';
+                      const email = company?.email || '';
+                      const logoUrl = company?.logo_url || '';
+                      const cleanLogoUrl = getImageUrl(logoUrl);
+
+                      return (
+                        <>
+                          {cleanLogoUrl ? (
+                            <img
+                              src={cleanLogoUrl}
+                              alt={`Logo de ${name}`}
+                              className="w-8 h-8 rounded-full object-cover"
+                              onError={(e) => {
+                                const target = e.target as HTMLImageElement;
+                                target.style.display = 'none';
+                                const fallback = target.nextElementSibling as HTMLElement;
+                                if (fallback) fallback.style.display = 'flex';
+                              }}
+                            />
+                          ) : null}
+                          <div className={`w-8 h-8 rounded-full bg-blue-600 flex items-center justify-center text-white font-bold ${cleanLogoUrl ? 'hidden' : ''}`}>
+                            {name ? name[0].toUpperCase() : (email[0]?.toUpperCase() || 'E')}
+                          </div>
+                          <div className="flex flex-col text-sm">
+                            <span className="font-semibold text-gray-900">{name || email}</span>
+                            <span className="text-xs text-blue-700 font-medium">Entreprise</span>
+                          </div>
+                        </>
+                      );
+                    })()}
+                  </div>
+                  <button
+                    onClick={() => {
+                      setIsMenuOpen(false);
+                      handleLogout();
+                    }}
+                    className="flex items-center gap-2 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors w-full"
+                  >
+                    <LogOut className="h-4 w-4" />
+                    Déconnexion
+                  </button>
+                </div>
               )}
             </div>
           </div>

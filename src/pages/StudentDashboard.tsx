@@ -1,17 +1,23 @@
 import React, { useState, useEffect } from 'react';
-import { User, FileText, Heart, Bell, Search, MapPin, Clock, DollarSign } from 'lucide-react';
+import { useLocation, useNavigate } from 'react-router-dom';
+import { User, FileText, Heart, Bell } from 'lucide-react';
 import ApplyJobModal from '../components/ApplyJobModal';
+import { useLocalStorage } from '../hooks/useStorage';
+import SelectWithOther from '../components/SelectWithOther';
+import { STUDY_LEVELS, STUDY_FIELDS_TOGO, UNIVERSITIES_TOGO } from '../constants/formOptions';
 
 const StudentDashboard = () => {
-  const [activeTab, setActiveTab] = useState('overview');
+  const [activeTab, setActiveTab] = useLocalStorage('studentDashboardActiveTab', 'overview');
+  const [showProfileEdit, setShowProfileEdit] = useLocalStorage('studentDashboardShowProfileEdit', false);
   const [user, setUser] = useState<any>(null);
   const [applications, setApplications] = useState<any[]>([]);
   const [savedJobs, setSavedJobs] = useState<any[]>([]);
-  const [showProfileEdit, setShowProfileEdit] = useState(false);
   const [profileCompletion, setProfileCompletion] = useState(0);
   const [recommendations, setRecommendations] = useState<any[]>([]);
   const [notificationsCount, setNotificationsCount] = useState(0);
-  const [applyJobId, setApplyJobId] = useState<number|null>(null);
+  const [applyJobId, setApplyJobId] = useState<number | null>(null);
+  const location = useLocation();
+  const navigate = useNavigate();
 
   useEffect(() => {
     // Récupérer l'utilisateur connecté depuis le sessionStorage
@@ -19,7 +25,20 @@ const StudentDashboard = () => {
     if (userData) {
       setUser(JSON.parse(userData));
     }
-  }, []);
+
+    // Vérifier s'il y a une candidature à continuer
+    const urlParams = new URLSearchParams(location.search);
+    const applyToJobParam = urlParams.get('applyToJob');
+    if (applyToJobParam) {
+      const pendingJobId = sessionStorage.getItem('pendingJobApplication');
+      if (pendingJobId && pendingJobId === applyToJobParam) {
+        setApplyJobId(parseInt(applyToJobParam));
+        // Nettoyer l'URL et le sessionStorage
+        sessionStorage.removeItem('pendingJobApplication');
+        navigate('/student-dashboard', { replace: true });
+      }
+    }
+  }, [location, navigate]);
 
   useEffect(() => {
     if (user && user.id) {
@@ -92,41 +111,37 @@ const StudentDashboard = () => {
           <div className="flex border-b border-gray-200">
             <button
               onClick={() => setActiveTab('overview')}
-              className={`px-6 py-4 font-medium ${
-                activeTab === 'overview'
-                  ? 'border-b-2 border-blue-500 text-blue-600'
-                  : 'text-gray-500 hover:text-gray-700'
-              }`}
+              className={`px-6 py-4 font-medium ${activeTab === 'overview'
+                ? 'border-b-2 border-blue-500 text-blue-600'
+                : 'text-gray-500 hover:text-gray-700'
+                }`}
             >
               Vue d'ensemble
             </button>
             <button
               onClick={() => setActiveTab('applications')}
-              className={`px-6 py-4 font-medium ${
-                activeTab === 'applications'
-                  ? 'border-b-2 border-blue-500 text-blue-600'
-                  : 'text-gray-500 hover:text-gray-700'
-              }`}
+              className={`px-6 py-4 font-medium ${activeTab === 'applications'
+                ? 'border-b-2 border-blue-500 text-blue-600'
+                : 'text-gray-500 hover:text-gray-700'
+                }`}
             >
               Mes candidatures
             </button>
             <button
               onClick={() => setActiveTab('saved')}
-              className={`px-6 py-4 font-medium ${
-                activeTab === 'saved'
-                  ? 'border-b-2 border-blue-500 text-blue-600'
-                  : 'text-gray-500 hover:text-gray-700'
-              }`}
+              className={`px-6 py-4 font-medium ${activeTab === 'saved'
+                ? 'border-b-2 border-blue-500 text-blue-600'
+                : 'text-gray-500 hover:text-gray-700'
+                }`}
             >
               Offres sauvegardées
             </button>
             <button
               onClick={() => setActiveTab('profile')}
-              className={`px-6 py-4 font-medium ${
-                activeTab === 'profile'
-                  ? 'border-b-2 border-blue-500 text-blue-600'
-                  : 'text-gray-500 hover:text-gray-700'
-              }`}
+              className={`px-6 py-4 font-medium ${activeTab === 'profile'
+                ? 'border-b-2 border-blue-500 text-blue-600'
+                : 'text-gray-500 hover:text-gray-700'
+                }`}
             >
               Mon profil
             </button>
@@ -243,7 +258,7 @@ const StudentDashboard = () => {
                   <div>
                     <h4 className="font-medium text-gray-900">{app.job_title || app.title}</h4>
                     <p className="text-blue-600 font-medium">{app.company_name || app.company}</p>
-                    <p className="text-xs text-gray-500">{app.location} • {app.applied_at?.slice(0,10)}</p>
+                    <p className="text-xs text-gray-500">{app.location} • {app.applied_at?.slice(0, 10)}</p>
                   </div>
                   <span className={`px-3 py-1 rounded-full text-sm font-medium ${getStatusColor(app.status)}`}>{app.status}</span>
                 </div>
@@ -334,10 +349,16 @@ const StudentProfileForm = ({ user, setUser, onClose }: { user: any, setUser: an
     level: user.level || '',
     field: user.field || ''
   });
-  const [message, setMessage] = useState<string|null>(null);
+  const [message, setMessage] = useState<string | null>(null);
+
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setForm({ ...form, [e.target.name]: e.target.value });
   };
+
+  const handleSelectChange = (name: string, value: string) => {
+    setForm({ ...form, [name]: value });
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     const res = await fetch(`/api/student/${user.id}`, {
@@ -355,16 +376,84 @@ const StudentProfileForm = ({ user, setUser, onClose }: { user: any, setUser: an
       setMessage(data.error || 'Erreur lors de la mise à jour');
     }
   };
+
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
       {message && <div className="text-center text-green-600">{message}</div>}
-      <input name="first_name" value={form.first_name} onChange={handleChange} required placeholder="Prénom" className="w-full border px-3 py-2 rounded" />
-      <input name="last_name" value={form.last_name} onChange={handleChange} required placeholder="Nom" className="w-full border px-3 py-2 rounded" />
-      <input name="email" value={form.email} onChange={handleChange} required placeholder="Email" className="w-full border px-3 py-2 rounded" />
-      <input name="university" value={form.university} onChange={handleChange} placeholder="Université" className="w-full border px-3 py-2 rounded" />
-      <input name="level" value={form.level} onChange={handleChange} placeholder="Niveau" className="w-full border px-3 py-2 rounded" />
-      <input name="field" value={form.field} onChange={handleChange} placeholder="Domaine" className="w-full border px-3 py-2 rounded" />
-      <button type="submit" className="w-full bg-blue-600 text-white py-2 rounded hover:bg-blue-700">Enregistrer</button>
+
+      <div className="grid grid-cols-2 gap-4">
+        <input
+          name="first_name"
+          value={form.first_name}
+          onChange={handleChange}
+          required
+          placeholder="Prénom"
+          className="w-full border px-3 py-2 rounded"
+        />
+        <input
+          name="last_name"
+          value={form.last_name}
+          onChange={handleChange}
+          required
+          placeholder="Nom"
+          className="w-full border px-3 py-2 rounded"
+        />
+      </div>
+
+      <input
+        name="email"
+        value={form.email}
+        onChange={handleChange}
+        required
+        placeholder="Email"
+        className="w-full border px-3 py-2 rounded"
+      />
+
+      <div>
+        <label className="block text-sm font-medium text-gray-700 mb-2">
+          Université
+        </label>
+        <SelectWithOther
+          value={form.university}
+          onChange={(value) => handleSelectChange('university', value)}
+          options={UNIVERSITIES_TOGO}
+          placeholder="Sélectionnez votre université"
+          name="university"
+          allowOther={true}
+        />
+      </div>
+
+      <div>
+        <label className="block text-sm font-medium text-gray-700 mb-2">
+          Niveau d'études
+        </label>
+        <SelectWithOther
+          value={form.level}
+          onChange={(value) => handleSelectChange('level', value)}
+          options={STUDY_LEVELS}
+          placeholder="Sélectionnez votre niveau"
+          name="level"
+          allowOther={true}
+        />
+      </div>
+
+      <div>
+        <label className="block text-sm font-medium text-gray-700 mb-2">
+          Domaine d'études
+        </label>
+        <SelectWithOther
+          value={form.field}
+          onChange={(value) => handleSelectChange('field', value)}
+          options={STUDY_FIELDS_TOGO}
+          placeholder="Sélectionnez votre domaine"
+          name="field"
+          allowOther={true}
+        />
+      </div>
+
+      <button type="submit" className="w-full bg-blue-600 text-white py-2 rounded hover:bg-blue-700">
+        Enregistrer
+      </button>
     </form>
   );
 };

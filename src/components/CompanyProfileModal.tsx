@@ -15,7 +15,7 @@ interface Company {
   logo_url?: string;
   job_count?: number;
   email?: string;
- phone?: string;
+  phone?: string;
 }
 
 const CompanyProfileModal: React.FC<CompanyProfileModalProps> = ({ companyId, onClose }) => {
@@ -45,8 +45,8 @@ const CompanyProfileModal: React.FC<CompanyProfileModalProps> = ({ companyId, on
   if (!companyId) return null;
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-40 flex items-center justify-center z-50">
-      <div className="bg-white rounded-lg shadow-lg max-w-lg w-full p-8 relative">
+    <div className="fixed inset-0 bg-black bg-opacity-40 flex items-center justify-center z-50" onClick={onClose}>
+      <div className="bg-white rounded-lg shadow-lg max-w-lg w-full p-8 relative" onClick={(e) => e.stopPropagation()}>
         <button className="absolute top-2 right-2 text-gray-400 hover:text-gray-600 text-2xl" onClick={onClose}>&times;</button>
         {loading && <div>Chargement...</div>}
         {error && <div className="text-red-500">{error}</div>}

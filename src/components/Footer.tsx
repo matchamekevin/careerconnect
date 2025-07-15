@@ -10,13 +10,13 @@ const Footer = () => {
           {/* Logo and Description */}
           <div className="col-span-1 md:col-span-2">
             <div className="flex items-center space-x-2 mb-4">
-              <Briefcase className="h-8 w-8 text-blue-400" />
+              <Briefcase className="h-8 w-8 text-gray-400" />
               <span className="text-xl font-bold">JobTogo Étudiant</span>
             </div>
             <p className="text-gray-300 mb-4">
               La plateforme de référence pour connecter les étudiants togolais avec les meilleures opportunités d'emploi et de stage.
             </p>
-            <div className="flex items-center space-x-2 text-gray-300">
+            <div className="flex items-center space-x-2 text-white">
               <MapPin className="h-4 w-4" />
               <span>Lomé, Togo</span>
             </div>
@@ -69,8 +69,8 @@ const Footer = () => {
           </div>
         </div>
 
-        <div className="border-t border-gray-800 mt-8 pt-8 text-center text-gray-400">
-          <p>&copy; 2024 JobTogo Étudiant. Tous droits réservés.</p>
+        <div className="border-t border-gray-700 mt-8 pt-8 text-center text-gray-400">
+          <p>&copy; 2025 JobTogo Étudiant. Tous droits réservés.</p>
         </div>
       </div>
     </footer>

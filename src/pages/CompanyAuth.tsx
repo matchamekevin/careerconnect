@@ -1,6 +1,8 @@
 import React, { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { Building, Mail, Lock, Eye, EyeOff, Phone, MapPin } from 'lucide-react';
+import SelectWithOther from '../components/SelectWithOther';
+import { COMPANY_SECTORS, COMPANY_SIZES } from '../constants/formOptions';
 
 const CompanyAuth = () => {
   const [isLogin, setIsLogin] = useState(true);
@@ -90,7 +92,7 @@ const CompanyAuth = () => {
               <>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Nom de l'entreprise *
+                    Nom de l'entreprise <span className="text-red-500">*</span>
                   </label>
                   <input
                     type="text"
@@ -105,7 +107,7 @@ const CompanyAuth = () => {
 
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Nom du contact *
+                    Nom du contact <span className="text-red-500">*</span>
                   </label>
                   <input
                     type="text"
@@ -157,40 +159,28 @@ const CompanyAuth = () => {
                     <label className="block text-sm font-medium text-gray-700 mb-2">
                       Secteur d'activité *
                     </label>
-                    <select
-                      name="sector"
+                    <SelectWithOther
                       value={formData.sector}
-                      onChange={handleInputChange}
-                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                      onChange={(value) => setFormData({ ...formData, sector: value })}
+                      options={COMPANY_SECTORS}
+                      placeholder="Sélectionnez votre secteur"
+                      name="sector"
                       required
-                    >
-                      <option value="">Secteur</option>
-                      <option value="technologie">Technologie</option>
-                      <option value="finance">Finance</option>
-                      <option value="sante">Santé</option>
-                      <option value="education">Éducation</option>
-                      <option value="commerce">Commerce</option>
-                      <option value="industrie">Industrie</option>
-                      <option value="ong">ONG</option>
-                      <option value="autre">Autre</option>
-                    </select>
+                      allowOther={false}
+                    />
                   </div>
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-2">
                       Taille de l'entreprise
                     </label>
-                    <select
-                      name="size"
+                    <SelectWithOther
                       value={formData.size}
-                      onChange={handleInputChange}
-                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                    >
-                      <option value="">Taille</option>
-                      <option value="1-10">1-10 employés</option>
-                      <option value="11-50">11-50 employés</option>
-                      <option value="51-200">51-200 employés</option>
-                      <option value="200+">200+ employés</option>
-                    </select>
+                      onChange={(value) => setFormData({ ...formData, size: value })}
+                      options={COMPANY_SIZES}
+                      placeholder="Sélectionnez la taille"
+                      name="size"
+                      required={false}
+                    />
                   </div>
                 </div>
 
@@ -225,7 +215,7 @@ const CompanyAuth = () => {
                       <button
                         type="button"
                         className="mt-2 px-3 py-1 bg-red-100 text-red-700 rounded hover:bg-red-200"
-                        onClick={() => setFormData({ ...formData, logo_url: undefined })}
+                        onClick={() => setFormData({ ...formData, logo_url: '' })}
                       >
                         Supprimer le logo
                       </button>
@@ -250,17 +240,17 @@ const CompanyAuth = () => {
 
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">
-                Email professionnel *
+                Email ou Nom de contact <span className="text-red-500">*</span>
               </label>
               <div className="relative">
                 <Mail className="h-5 w-5 absolute left-3 top-3 text-gray-400" />
                 <input
-                  type="email"
+                  type="text"
                   name="email"
                   value={formData.email}
                   onChange={handleInputChange}
                   className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                  placeholder="contact@entreprise.com"
+                  placeholder="contact@entreprise.com ou nom du contact"
                   required
                 />
               </div>
@@ -268,7 +258,7 @@ const CompanyAuth = () => {
 
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">
-                Mot de passe *
+                Mot de passe <span className="text-red-500">*</span>
               </label>
               <div className="relative">
                 <Lock className="h-5 w-5 absolute left-3 top-3 text-gray-400" />
@@ -294,7 +284,7 @@ const CompanyAuth = () => {
             {!isLogin && (
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Confirmer le mot de passe *
+                  Confirmer le mot de passe <span className="text-red-500">*</span>
                 </label>
                 <div className="relative">
                   <Lock className="h-5 w-5 absolute left-3 top-3 text-gray-400" />
@@ -315,7 +305,7 @@ const CompanyAuth = () => {
               <div className="text-sm text-gray-600 bg-blue-50 p-4 rounded-lg">
                 <p className="font-medium text-blue-800 mb-2">📋 Validation du compte :</p>
                 <p>
-                  Votre compte sera vérifié par notre équipe avant activation. 
+                  Votre compte sera vérifié par notre équipe avant activation.
                   Vous recevrez un email de confirmation sous 24-48h.
                 </p>
               </div>

@@ -6,10 +6,12 @@ const { v4: uuidv4 } = require('uuid');
 const multer = require('multer');
 const path = require('path');
 require('dotenv').config();
-const transporter = require('./mailer');
+const { sendJobApplicationEmail } = require('./mailer');
+const whatsappService = require('./whatsapp');
 const fs = require('fs');
 const reviewsRouter = require('./reviews');
 const savedJobsRouter = require('./savedJobs');
+const autoResponseRouter = require('./autoResponse');
 
 const app = express();
 app.use(cors());
@@ -47,7 +49,7 @@ app.get('/api/jobs', async (req, res) => {
 
 // Inscription étudiant
 app.post('/api/register-student', async (req, res) => {
-  const { firstName, lastName, email, password } = req.body;
+  const { firstName, lastName, email, password, university, level, field } = req.body;
   try {
     // Vérifier si l'email existe déjà
     const exist = await pool.query('SELECT id FROM users WHERE email = $1', [email]);
@@ -56,8 +58,8 @@ app.post('/api/register-student', async (req, res) => {
     }
     // Insérer le nouvel étudiant (sans hash pour test)
     await pool.query(
-      'INSERT INTO users (id, first_name, last_name, email, password_hash) VALUES ($1, $2, $3, $4, $5)',
-      [uuidv4(), firstName, lastName, email, password]
+      'INSERT INTO users (id, first_name, last_name, email, password_hash, university, level, field) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)',
+      [uuidv4(), firstName, lastName, email, password, university, level, field]
     );
     res.json({ success: true });
   } catch (err) {
@@ -69,9 +71,13 @@ app.post('/api/register-student', async (req, res) => {
 app.post('/api/login-student', async (req, res) => {
   const { email, password } = req.body;
   try {
-    const user = await pool.query('SELECT * FROM users WHERE email = $1 AND password_hash = $2', [email, password]);
+    // Chercher par email ou par prénom (first_name)
+    const user = await pool.query(
+      'SELECT * FROM users WHERE (email = $1 OR first_name = $1) AND password_hash = $2', 
+      [email, password]
+    );
     if (user.rows.length === 0) {
-      return res.status(401).json({ error: 'Email ou mot de passe incorrect.' });
+      return res.status(401).json({ error: 'Email/prénom ou mot de passe incorrect.' });
     }
     res.json({ success: true, user: user.rows[0] });
   } catch (err) {
@@ -101,12 +107,16 @@ app.post('/api/register-company', async (req, res) => {
 app.post('/api/login-company', async (req, res) => {
   const { email, password } = req.body;
   try {
-    const company = await pool.query('SELECT * FROM companies WHERE email = $1 AND password_hash = $2', [email, password]);
+    // Chercher par email ou par nom de contact (contact_name)
+    const company = await pool.query(
+      'SELECT * FROM companies WHERE (email = $1 OR contact_name = $1) AND password_hash = $2', 
+      [email, password]
+    );
     if (company.rows.length === 0) {
-      return res.status(401).json({ error: 'Email ou mot de passe incorrect.' });
+      return res.status(401).json({ error: 'Email/nom de contact ou mot de passe incorrect.' });
     }
     // Marquer comme connecté
-    await pool.query('UPDATE companies SET is_connected = true WHERE email = $1', [email]);
+    await pool.query('UPDATE companies SET is_connected = true WHERE email = $1', [company.rows[0].email]);
     res.json({ success: true, company: company.rows[0] });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -451,6 +461,48 @@ app.delete('/api/companies/:id', async (req, res) => {
     res.status(500).json({ error: err.message });
   }
 });
+
+// Activer/désactiver un compte entreprise (admin)
+app.patch('/api/companies/:id/status', async (req, res) => {
+  const { id } = req.params;
+  const { status } = req.body;
+  
+  try {
+    const result = await pool.query(
+      'UPDATE companies SET account_status = $1 WHERE id = $2 RETURNING *',
+      [status, id]
+    );
+    
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Entreprise non trouvée' });
+    }
+    
+    res.json({ success: true, company: result.rows[0] });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Activer/désactiver un compte étudiant (admin)
+app.patch('/api/students/:id/status', async (req, res) => {
+  const { id } = req.params;
+  const { status } = req.body;
+  
+  try {
+    const result = await pool.query(
+      'UPDATE students SET account_status = $1 WHERE id = $2 RETURNING *',
+      [status, id]
+    );
+    
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Étudiant non trouvé' });
+    }
+    
+    res.json({ success: true, student: result.rows[0] });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
 // Supprimer une offre (admin)
 app.delete('/api/jobs/:id', async (req, res) => {
   const { id } = req.params;
@@ -503,52 +555,144 @@ app.get('/api/applications', async (req, res) => {
 // Route pour postuler à une offre avec CV PDF
 // (Réutilise l'instance upload déjà déclarée plus haut)
 app.post('/api/apply', upload.single('cv'), async (req, res) => {
-  const { job_id, email, phone } = req.body;
+  const { job_id, email, phone, country } = req.body;
   const cv_url = req.file ? `/uploads/${req.file.filename}` : null;
+  
+  console.log('🔍 Debug - Données reçues:', {
+    job_id,
+    email,
+    phone,
+    country,
+    cv_file: req.file?.filename
+  });
+  
+  // Configuration des pays supportés
+  const COUNTRIES = {
+    'TG': { name: 'Togo', prefix: '+228', pattern: /^\+228\s?\d{2}\s?\d{2}\s?\d{2}\s?\d{2}$/ },
+    'BF': { name: 'Burkina Faso', prefix: '+226', pattern: /^\+226\s?\d{2}\s?\d{2}\s?\d{2}\s?\d{2}$/ },
+    'GH': { name: 'Ghana', prefix: '+233', pattern: /^\+233\s?\d{2}\s?\d{3}\s?\d{4}$/ },
+    'BJ': { name: 'Bénin', prefix: '+229', pattern: /^\+229\s?\d{2}\s?\d{2}\s?\d{2}\s?\d{2}$/ },
+    'CI': { name: 'Côte d\'Ivoire', prefix: '+225', pattern: /^\+225\s?\d{2}\s?\d{2}\s?\d{2}\s?\d{2}$/ }
+  };
+  
   // Validation email
-  const emailRegex = /^[\w-.]+@([\w-]+\.)+[\w-]{2,}$/;
+  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
   if (!emailRegex.test(email)) {
-    return res.status(400).json({ error: 'Email invalide.' });
+    return res.status(400).json({ error: 'Adresse email invalide.' });
   }
-  // Validation numéro +228 xx xx xx xx
-  const phoneRegex = /^\+228\s?\d{2}\s?\d{2}\s?\d{2}\s?\d{2}$/;
-  if (!phoneRegex.test(phone)) {
-    return res.status(400).json({ error: 'Numéro de téléphone invalide. Format attendu : +228 xx xx xx xx' });
+  
+  // Validation numéro de téléphone selon le pays
+  const selectedCountry = COUNTRIES[country] || COUNTRIES['TG'];
+  if (!selectedCountry.pattern.test(phone)) {
+    return res.status(400).json({ 
+      error: `Numéro de téléphone invalide pour ${selectedCountry.name}. Format attendu : ${selectedCountry.prefix} XX XX XX XX` 
+    });
   }
+  
   if (!job_id || !email || !phone || !cv_url) {
     return res.status(400).json({ error: 'Tous les champs sont obligatoires.' });
   }
+  
   try {
-    // Récupérer l'email de l'entreprise liée à l'offre
+    // Récupérer les informations de l'offre et de l'entreprise
     const jobRes = await pool.query('SELECT company_id, title FROM jobs WHERE id = $1', [job_id]);
     if (jobRes.rows.length === 0) return res.status(400).json({ error: "Offre non trouvée" });
+    
     const companyId = jobRes.rows[0].company_id;
     const jobTitle = jobRes.rows[0].title;
-    const companyRes = await pool.query('SELECT email, name FROM companies WHERE id = $1', [companyId]);
+    
+    const companyRes = await pool.query('SELECT email, name, phone FROM companies WHERE id = $1', [companyId]);
     if (companyRes.rows.length === 0) return res.status(400).json({ error: "Entreprise non trouvée" });
+    
     const companyEmail = companyRes.rows[0].email;
     const companyName = companyRes.rows[0].name;
+    const companyPhone = companyRes.rows[0].phone;
+    
+    // Vérifier que l'email de l'entreprise est valide
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(companyEmail)) {
+      return res.status(400).json({ error: "Email de l'entreprise invalide. L'entreprise doit configurer un email valide." });
+    }
+    
+    console.log(`📧 Préparation email pour: ${companyName} (${companyEmail})`);
 
-    // Envoi du mail à l'entreprise
-    let mailOptions = {
-      from: process.env.SMTP_FROM || process.env.SMTP_USER,
-      to: companyEmail,
-      subject: `Nouvelle candidature pour ${jobTitle}`,
-      text: `Vous avez reçu une nouvelle candidature pour l'offre "${jobTitle}".\n\nEmail du candidat : ${email}\nTéléphone : ${phone}\n\nLe CV est en pièce jointe.`,
-      attachments: [
-        {
-          filename: req.file.originalname,
-          path: req.file.path
-        }
-      ]
+    // Générer le contenu de l'email automatiquement
+    const currentDate = new Date().toLocaleDateString('fr-FR');
+    const candidateName = email.split('@')[0]; // Nom temporaire basé sur l'email
+    
+    // Préparer les informations du candidat
+    const candidateInfo = {
+      firstName: candidateName,
+      lastName: '',
+      email: email,
+      phone: phone,
+      coverLetter: `Bonjour ${companyName},
+
+J'ai l'honneur de vous soumettre ma candidature pour le poste de ${jobTitle} publié sur votre plateforme CareerConnect.
+
+Étant très intéressé(e) par cette opportunité, je serais ravi(e) de pouvoir contribuer au développement de votre entreprise grâce à mes compétences et ma motivation.
+
+Informations du candidat :
+- Email : ${email}
+- Téléphone : ${phone}
+- Pays : ${selectedCountry.name}
+- Date de candidature : ${currentDate}
+
+Je reste à votre disposition pour tout complément d'information et serais honoré(e) de pouvoir vous rencontrer pour un entretien.
+
+Cordialement,
+${candidateName}
+
+---
+Cette candidature a été envoyée automatiquement via CareerConnect.`
     };
-    await transporter.sendMail(mailOptions);
+
+    // Envoi du mail à l'entreprise avec le nouveau mailer
+    await sendJobApplicationEmail(
+      companyEmail,
+      jobTitle,
+      candidateInfo,
+      req.file ? req.file.path : null,
+      companyPhone // Ajout du numéro de téléphone de l'entreprise
+    );
+
+    // Créer une discussion WhatsApp directe entre entreprise et étudiant
+    let whatsappResult = null;
+    if (companyPhone && phone) {
+      try {
+        console.log('📱 Création d\'une discussion WhatsApp directe...');
+        whatsappResult = await whatsappService.createDirectConversation(
+          companyPhone,
+          phone,
+          jobTitle,
+          companyName,
+          candidateInfo
+        );
+        
+        if (whatsappResult.success) {
+          console.log('✅ Discussion WhatsApp créée avec succès !');
+          console.log('🔗 Lien entreprise → étudiant:', whatsappResult.companyLink);
+          console.log('🔗 Lien étudiant → entreprise:', whatsappResult.studentLink);
+        } else {
+          console.log('⚠️ Erreur lors de la création de la discussion WhatsApp');
+        }
+      } catch (error) {
+        console.error('❌ Erreur WhatsApp:', error);
+      }
+    }
 
     await pool.query(
       'INSERT INTO applications (job_id, email, phone, cv_url, status, applied_at) VALUES ($1, $2, $3, $4, $5, NOW())',
       [job_id, email, phone, cv_url, 'Nouveau']
     );
-    res.json({ success: true });
+    
+    res.json({ 
+      success: true,
+      whatsappLinks: whatsappResult ? {
+        companyToStudent: whatsappResult.companyLink,
+        studentToCompany: whatsappResult.studentLink
+      } : null
+    });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -577,6 +721,7 @@ app.post('/api/logout-company', async (req, res) => {
 
 app.use('/api/reviews', reviewsRouter);
 app.use('/api/student', savedJobsRouter);
+app.use('/api/response', autoResponseRouter);
 
 // Nouvelle route : upload logo BLOB (stockage direct en base)
 app.post('/api/company/:id/logo-blob', upload.single('logo'), async (req, res) => {
@@ -610,7 +755,256 @@ app.get('/api/company/:id/logo-blob', async (req, res) => {
   }
 });
 
+// ============================================
+// ENDPOINTS POUR LA PAGE CONTACT
+// ============================================
+
+// Créer la table contact_messages si elle n'existe pas
+const createContactTable = async () => {
+  try {
+    const query = `
+      CREATE TABLE IF NOT EXISTS contact_messages (
+          id SERIAL PRIMARY KEY,
+          name VARCHAR(100) NOT NULL,
+          email VARCHAR(150) NOT NULL,
+          subject VARCHAR(200) NOT NULL,
+          user_type VARCHAR(50) NOT NULL,
+          message TEXT NOT NULL,
+          status VARCHAR(50) DEFAULT 'nouveau',
+          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+          updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+          admin_response TEXT,
+          responded_at TIMESTAMP,
+          responded_by INTEGER
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_contact_messages_email ON contact_messages(email);
+      CREATE INDEX IF NOT EXISTS idx_contact_messages_status ON contact_messages(status);
+      CREATE INDEX IF NOT EXISTS idx_contact_messages_created_at ON contact_messages(created_at);
+      CREATE INDEX IF NOT EXISTS idx_contact_messages_user_type ON contact_messages(user_type);
+    `;
+    
+    await pool.query(query);
+    console.log('✅ Table contact_messages initialisée');
+  } catch (error) {
+    console.log('ℹ️ Table contact_messages déjà présente');
+  }
+};
+
+// Initialiser la table au démarrage
+createContactTable();
+
+// Route pour envoyer un message de contact
+app.post('/api/contact', async (req, res) => {
+  const { name, email, subject, userType, message } = req.body;
+  
+  console.log('📩 Nouveau message de contact reçu:', {
+    name,
+    email,
+    subject,
+    userType,
+    messageLength: message?.length
+  });
+
+  // Validation des champs obligatoires
+  if (!name || !email || !subject || !userType || !message) {
+    return res.status(400).json({ 
+      success: false, 
+      error: 'Tous les champs sont obligatoires' 
+    });
+  }
+
+  // Validation de l'email
+  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  if (!emailRegex.test(email)) {
+    return res.status(400).json({ 
+      success: false, 
+      error: 'Adresse email invalide' 
+    });
+  }
+
+  try {
+    const result = await pool.query(
+      'INSERT INTO contact_messages (name, email, subject, user_type, message) VALUES ($1, $2, $3, $4, $5) RETURNING id, created_at',
+      [name, email, subject, userType, message]
+    );
+
+    console.log('✅ Message de contact enregistré avec l\'ID:', result.rows[0].id);
+
+    res.json({ 
+      success: true, 
+      message: 'Message envoyé avec succès',
+      id: result.rows[0].id 
+    });
+
+  } catch (error) {
+    console.error('❌ Erreur lors de l\'enregistrement du message:', error);
+    res.status(500).json({ 
+      success: false, 
+      error: 'Erreur lors de l\'enregistrement du message' 
+    });
+  }
+});
+
+// Route pour récupérer tous les messages de contact (pour l'admin)
+app.get('/api/contact/messages', async (req, res) => {
+  try {
+    const { status, userType, limit = 50, offset = 0 } = req.query;
+    
+    let query = 'SELECT * FROM contact_messages';
+    let params = [];
+    let conditions = [];
+
+    if (status) {
+      conditions.push(`status = $${params.length + 1}`);
+      params.push(status);
+    }
+
+    if (userType) {
+      conditions.push(`user_type = $${params.length + 1}`);
+      params.push(userType);
+    }
+
+    if (conditions.length > 0) {
+      query += ' WHERE ' + conditions.join(' AND ');
+    }
+
+    query += ` ORDER BY created_at DESC LIMIT $${params.length + 1} OFFSET $${params.length + 2}`;
+    params.push(limit, offset);
+
+    const result = await pool.query(query, params);
+    
+    // Compter le total pour la pagination
+    const countQuery = 'SELECT COUNT(*) as total FROM contact_messages' + 
+      (conditions.length > 0 ? ' WHERE ' + conditions.join(' AND ') : '');
+    const countResult = await pool.query(countQuery, params.slice(0, -2));
+
+    res.json({
+      success: true,
+      messages: result.rows,
+      total: parseInt(countResult.rows[0].total),
+      page: Math.floor(offset / limit) + 1,
+      totalPages: Math.ceil(countResult.rows[0].total / limit)
+    });
+
+  } catch (error) {
+    console.error('❌ Erreur lors de la récupération des messages:', error);
+    res.status(500).json({ 
+      success: false, 
+      error: 'Erreur lors de la récupération des messages' 
+    });
+  }
+});
+
+// Route pour supprimer un message de contact (pour l'admin)
+app.delete('/api/contact/messages/:id', async (req, res) => {
+  const { id } = req.params;
+  
+  console.log('🗑️ Demande de suppression du message ID:', id);
+
+  // Validation de l'ID
+  if (!id || isNaN(parseInt(id))) {
+    return res.status(400).json({ 
+      success: false, 
+      error: 'ID de message invalide' 
+    });
+  }
+
+  try {
+    // Vérifier que le message existe
+    const checkResult = await pool.query(
+      'SELECT id FROM contact_messages WHERE id = $1',
+      [id]
+    );
+
+    if (checkResult.rows.length === 0) {
+      return res.status(404).json({ 
+        success: false, 
+        error: 'Message non trouvé' 
+      });
+    }
+
+    // Supprimer le message
+    await pool.query(
+      'DELETE FROM contact_messages WHERE id = $1',
+      [id]
+    );
+
+    console.log('✅ Message supprimé avec succès, ID:', id);
+
+    res.json({ 
+      success: true, 
+      message: 'Message supprimé avec succès' 
+    });
+
+  } catch (error) {
+    console.error('❌ Erreur lors de la suppression du message:', error);
+    res.status(500).json({ 
+      success: false, 
+      error: 'Erreur lors de la suppression du message' 
+    });
+  }
+});
+
+// Route pour marquer un message comme lu/traité (optionnel)
+app.patch('/api/contact/messages/:id/status', async (req, res) => {
+  const { id } = req.params;
+  const { status } = req.body;
+  
+  console.log('📝 Mise à jour du statut du message ID:', id, 'nouveau statut:', status);
+
+  // Validation
+  if (!id || isNaN(parseInt(id))) {
+    return res.status(400).json({ 
+      success: false, 
+      error: 'ID de message invalide' 
+    });
+  }
+
+  if (!status || !['unread', 'read', 'processed'].includes(status)) {
+    return res.status(400).json({ 
+      success: false, 
+      error: 'Statut invalide. Valeurs acceptées: unread, read, processed' 
+    });
+  }
+
+  try {
+    // Vérifier que le message existe
+    const checkResult = await pool.query(
+      'SELECT id FROM contact_messages WHERE id = $1',
+      [id]
+    );
+
+    if (checkResult.rows.length === 0) {
+      return res.status(404).json({ 
+        success: false, 
+        error: 'Message non trouvé' 
+      });
+    }
+
+    // Mettre à jour le statut
+    await pool.query(
+      'UPDATE contact_messages SET status = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2',
+      [status, id]
+    );
+
+    console.log('✅ Statut du message mis à jour, ID:', id);
+
+    res.json({ 
+      success: true, 
+      message: 'Statut mis à jour avec succès' 
+    });
+
+  } catch (error) {
+    console.error('❌ Erreur lors de la mise à jour du statut:', error);
+    res.status(500).json({ 
+      success: false, 
+      error: 'Erreur lors de la mise à jour du statut' 
+    });
+  }
+});
+
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => {
-  console.log(`Serveur backend démarré sur le port ${PORT}`);
+  console.log(`🚀 Serveur CareerConnect démarré sur le port ${PORT}`);
 });

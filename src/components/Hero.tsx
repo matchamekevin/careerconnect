@@ -1,14 +1,31 @@
-import React from 'react';
-import { Link } from 'react-router-dom';
+import React, { useState } from 'react';
+import { Link, useNavigate } from 'react-router-dom';
 import { Search, Users, Building, Award } from 'lucide-react';
-
-// Composant pour afficher un logo BLOB depuis l'API
-// Usage : <CompanyLogoBlob companyId="..." />
-import { CompanyLogoBlob } from './CompanyLogoBlob';
 
 const Hero = () => {
   // Vérifie la session pour masquer les boutons du Hero
   const isAuthenticated = !!sessionStorage.getItem('studentUser') || !!sessionStorage.getItem('companyUser');
+
+  // États pour la recherche et les filtres
+  const [searchTerm, setSearchTerm] = useState('');
+  const [selectedLocation, setSelectedLocation] = useState('');
+  const navigate = useNavigate();
+
+  // Fonction pour gérer la recherche
+  const handleSearch = () => {
+    const params = new URLSearchParams();
+    if (searchTerm.trim()) params.append('search', searchTerm.trim());
+    if (selectedLocation) params.append('location', selectedLocation);
+
+    navigate(`/jobs?${params.toString()}`);
+  };
+
+  // Fonction pour gérer l'appui sur Entrée
+  const handleKeyPress = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter') {
+      handleSearch();
+    }
+  };
 
   return (
     <section
@@ -44,25 +61,32 @@ const Hero = () => {
                 <input
                   type="text"
                   placeholder="Rechercher un poste, entreprise..."
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  onKeyPress={handleKeyPress}
                   className="w-full px-4 py-3 text-gray-900 rounded-lg border border-gray-300 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                 />
               </div>
               <div className="flex-1">
-                <select className="w-full px-4 py-3 text-gray-900 rounded-lg border border-gray-300 focus:ring-2 focus:ring-blue-500 focus:border-transparent">
-                  <option>Toutes les villes</option>
-                  <option>Lomé</option>
-                  <option>Sokodé</option>
-                  <option>Kara</option>
-                  <option>Atakpamé</option>
+                <select
+                  value={selectedLocation}
+                  onChange={(e) => setSelectedLocation(e.target.value)}
+                  className="w-full px-4 py-3 text-gray-900 rounded-lg border border-gray-300 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                >
+                  <option value="">Toutes les villes</option>
+                  <option value="Lomé">Lomé</option>
+                  <option value="Sokodé">Sokodé</option>
+                  <option value="Kara">Kara</option>
+                  <option value="Atakpamé">Atakpamé</option>
                 </select>
               </div>
-              <Link
-                to="/jobs"
+              <button
+                onClick={handleSearch}
                 className="flex items-center justify-center px-8 py-3 bg-gray-100 text-gray-800 rounded-lg hover:bg-white hover:text-gray-900 transition-colors border border-gray-300"
               >
                 <Search className="h-5 w-5 mr-2" />
                 Rechercher
-              </Link>
+              </button>
             </div>
           </div>
 
@@ -109,13 +133,6 @@ const Hero = () => {
             <div className="text-blue-200">Opportunités créées</div>
           </div>
         </div>
-
-        {/* Exemple d'affichage d'un logo BLOB */}
-        {/*
-        <div className="flex justify-center mt-8">
-          <CompanyLogoBlob companyId={"ID_ENTREPRISE"} />
-        </div>
-        */}
       </div>
     </section>
   );

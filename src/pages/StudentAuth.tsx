@@ -1,6 +1,8 @@
-import React, { useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import React, { useState, useEffect } from 'react';
+import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { User, Mail, Lock, Eye, EyeOff, GraduationCap } from 'lucide-react';
+import SelectWithOther from '../components/SelectWithOther';
+import { UNIVERSITIES_TOGO, STUDY_FIELDS_TOGO, STUDY_LEVELS } from '../constants/formOptions';
 
 const StudentAuth = () => {
   const [isLogin, setIsLogin] = useState(true);
@@ -16,7 +18,21 @@ const StudentAuth = () => {
     field: ''
   });
   const navigate = useNavigate();
+  const location = useLocation();
   const [message, setMessage] = useState<string | null>(null);
+  const [isFromJobApplication, setIsFromJobApplication] = useState(false);
+
+  useEffect(() => {
+    // Vérifier si l'utilisateur vient d'une tentative de candidature
+    const urlParams = new URLSearchParams(location.search);
+    const redirect = urlParams.get('redirect');
+    const pendingJobId = sessionStorage.getItem('pendingJobApplication');
+
+    if (redirect === 'apply' && pendingJobId) {
+      setIsFromJobApplication(true);
+      setMessage(`🔐 Connectez-vous pour postuler à cette offre d'emploi`);
+    }
+  }, [location]);
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     setFormData({
@@ -38,7 +54,15 @@ const StudentAuth = () => {
       const data = await res.json();
       if (data.success) {
         sessionStorage.setItem('studentUser', JSON.stringify(data.user));
-        navigate('/student-dashboard');
+
+        // Vérifier s'il y a une candidature en attente
+        const pendingJobId = sessionStorage.getItem('pendingJobApplication');
+        if (pendingJobId && isFromJobApplication) {
+          // Rediriger vers le dashboard avec un paramètre pour ouvrir la modal de candidature
+          navigate(`/student-dashboard?applyToJob=${pendingJobId}`);
+        } else {
+          navigate('/student-dashboard');
+        }
       } else {
         setMessage(data.error || 'Erreur de connexion');
       }
@@ -76,19 +100,29 @@ const StudentAuth = () => {
               {isLogin ? 'Connexion Étudiant' : 'Inscription Étudiant'}
             </h2>
             <p className="text-gray-600 mt-2">
-              {isLogin ? 'Accédez à votre espace personnel' : 'Créez votre compte étudiant'}
+              {isFromJobApplication
+                ? 'Connectez-vous pour continuer votre candidature'
+                : (isLogin ? 'Accédez à votre espace personnel' : 'Créez votre compte étudiant')
+              }
             </p>
           </div>
 
           {/* Form */}
-          {message && <div className="text-center text-red-500 mb-2">{message}</div>}
+          {message && (
+            <div className={`text-center mb-4 p-3 rounded-lg ${isFromJobApplication
+              ? 'bg-blue-50 border border-blue-200 text-blue-800'
+              : 'bg-red-50 border border-red-200 text-red-800'
+              }`}>
+              {message}
+            </div>
+          )}
           <form onSubmit={handleSubmit} className="space-y-6">
             {!isLogin && (
               <>
                 <div className="grid grid-cols-2 gap-4">
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Prénom
+                      Prénom <span className="text-red-500">*</span>
                     </label>
                     <div className="relative">
                       <User className="h-5 w-5 absolute left-3 top-3 text-gray-400" />
@@ -105,7 +139,7 @@ const StudentAuth = () => {
                   </div>
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Nom
+                      Nom <span className="text-red-500">*</span>
                     </label>
                     <input
                       type="text"
@@ -121,63 +155,46 @@ const StudentAuth = () => {
 
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Université/École
+                    Université/École <span className="text-red-500">*</span>
                   </label>
-                  <select
-                    name="university"
+                  <SelectWithOther
                     value={formData.university}
-                    onChange={handleInputChange}
-                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    onChange={(value) => setFormData({ ...formData, university: value })}
+                    options={UNIVERSITIES_TOGO}
+                    placeholder="Sélectionnez votre établissement"
+                    name="university"
                     required
-                  >
-                    <option value="">Sélectionnez votre établissement</option>
-                    <option value="ul">Université de Lomé</option>
-                    <option value="uk">Université de Kara</option>
-                    <option value="ucao">UCAO</option>
-                    <option value="isk">ISK</option>
-                    <option value="other">Autre</option>
-                  </select>
+                  />
                 </div>
 
                 <div className="grid grid-cols-2 gap-4">
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Niveau d'études
+                      Niveau d'études <span className="text-red-500">*</span>
                     </label>
-                    <select
-                      name="level"
+                    <SelectWithOther
                       value={formData.level}
-                      onChange={handleInputChange}
-                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                      onChange={(value) => setFormData({ ...formData, level: value })}
+                      options={STUDY_LEVELS}
+                      placeholder="Sélectionnez votre niveau"
+                      name="level"
                       required
-                    >
-                      <option value="">Niveau</option>
-                      <option value="l1">Licence 1</option>
-                      <option value="l2">Licence 2</option>
-                      <option value="l3">Licence 3</option>
-                      <option value="m1">Master 1</option>
-                      <option value="m2">Master 2</option>
-                    </select>
+                      allowOther={true}
+                    />
                   </div>
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Domaine d'études
+                      Domaine d'études <span className="text-red-500">*</span>
                     </label>
-                    <select
-                      name="field"
+                    <SelectWithOther
                       value={formData.field}
-                      onChange={handleInputChange}
-                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                      onChange={(value) => setFormData({ ...formData, field: value })}
+                      options={STUDY_FIELDS_TOGO}
+                      placeholder="Sélectionnez votre domaine"
+                      name="field"
                       required
-                    >
-                      <option value="">Domaine</option>
-                      <option value="informatique">Informatique</option>
-                      <option value="commerce">Commerce</option>
-                      <option value="comptabilite">Comptabilité</option>
-                      <option value="communication">Communication</option>
-                      <option value="droit">Droit</option>
-                      <option value="autre">Autre</option>
-                    </select>
+                      allowOther={true}
+                    />
                   </div>
                 </div>
               </>
@@ -185,17 +202,17 @@ const StudentAuth = () => {
 
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">
-                Email
+                Email ou Prénom <span className="text-red-500">*</span>
               </label>
               <div className="relative">
                 <Mail className="h-5 w-5 absolute left-3 top-3 text-gray-400" />
                 <input
-                  type="email"
+                  type="text"
                   name="email"
                   value={formData.email}
                   onChange={handleInputChange}
                   className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                  placeholder="votre.email@exemple.com"
+                  placeholder="votre.email@exemple.com ou votre prénom"
                   required
                 />
               </div>
@@ -203,7 +220,7 @@ const StudentAuth = () => {
 
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">
-                Mot de passe
+                Mot de passe <span className="text-red-500">*</span>
               </label>
               <div className="relative">
                 <Lock className="h-5 w-5 absolute left-3 top-3 text-gray-400" />
@@ -229,7 +246,7 @@ const StudentAuth = () => {
             {!isLogin && (
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Confirmer le mot de passe
+                  Confirmer le mot de passe <span className="text-red-500">*</span>
                 </label>
                 <div className="relative">
                   <Lock className="h-5 w-5 absolute left-3 top-3 text-gray-400" />

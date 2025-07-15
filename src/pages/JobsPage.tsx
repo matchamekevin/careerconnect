@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
-import { Search, MapPin, Filter, Clock, DollarSign, ArrowRight } from 'lucide-react';
+import { useSearchParams } from 'react-router-dom';
+import { Search, MapPin, Clock, ArrowRight } from 'lucide-react';
 import ApplyJobModal from '../components/ApplyJobModal';
 
 interface Job {
@@ -13,19 +14,21 @@ interface Job {
   description: string;
   tags: string[];
   logo_url?: string;
+  company_id?: number;
 }
 
 const JobsPage = () => {
-  const [searchTerm, setSearchTerm] = useState('');
-  const [selectedLocation, setSelectedLocation] = useState('');
+  const [searchParams] = useSearchParams();
+  const [searchTerm, setSearchTerm] = useState(searchParams.get('search') || '');
+  const [selectedLocation, setSelectedLocation] = useState(searchParams.get('location') || '');
   const [selectedType, setSelectedType] = useState('');
   const [jobs, setJobs] = useState<Job[]>([]);
-  const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [applyJobId, setApplyJobId] = useState<number | null>(null);
   const [saveMessage, setSaveMessage] = useState<string | null>(null);
   const [savedJobIds, setSavedJobIds] = useState<number[]>([]);
-  const [visibleCount, setVisibleCount] = useState(6);
+  const [currentPage, setCurrentPage] = useState(1);
+  const jobsPerPage = 10;
 
   useEffect(() => {
     fetch('/api/jobs')
@@ -34,12 +37,11 @@ const JobsPage = () => {
         return res.json();
       })
       .then((data) => {
+        // Afficher toutes les offres pour tous les utilisateurs
         setJobs(data);
-        setLoading(false);
       })
       .catch((err) => {
         setError(err.message);
-        setLoading(false);
       });
   }, []);
 
@@ -53,18 +55,66 @@ const JobsPage = () => {
     }
   }, []);
 
-  const filteredJobs = jobs.filter(job => {
+  // Afficher toutes les offres disponibles
+  let displayJobs = jobs;
+  const filteredJobs = displayJobs.filter(job => {
     const matchesSearch = job.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         job.company.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         (job.tags && job.tags.some(tag => tag.toLowerCase().includes(searchTerm.toLowerCase())));
+      job.company.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      (job.tags && job.tags.some(tag => tag.toLowerCase().includes(searchTerm.toLowerCase())));
     const matchesLocation = !selectedLocation || job.location === selectedLocation;
     const matchesType = !selectedType || job.type === selectedType;
     return matchesSearch && matchesLocation && matchesType;
   });
 
-  const visibleJobs = filteredJobs.slice(0, visibleCount);
+  // Calculs pour la pagination
+  const totalJobs = filteredJobs.length;
+  const totalPages = Math.ceil(totalJobs / jobsPerPage);
+  const startIndex = (currentPage - 1) * jobsPerPage;
+  const endIndex = startIndex + jobsPerPage;
+  const currentJobs = filteredJobs.slice(startIndex, endIndex);
 
-  if (loading) return <div className="text-center py-10">Chargement...</div>;
+  // Réinitialiser à la page 1 quand les filtres changent
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchTerm, selectedLocation, selectedType]);
+
+  const goToPage = (page: number) => {
+    setCurrentPage(page);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  const getPageNumbers = () => {
+    const pages = [];
+    const maxVisiblePages = 5;
+
+    if (totalPages <= maxVisiblePages) {
+      for (let i = 1; i <= totalPages; i++) {
+        pages.push(i);
+      }
+    } else {
+      if (currentPage <= 3) {
+        for (let i = 1; i <= 4; i++) {
+          pages.push(i);
+        }
+        pages.push('...', totalPages);
+      } else if (currentPage >= totalPages - 2) {
+        pages.push(1, '...');
+        for (let i = totalPages - 3; i <= totalPages; i++) {
+          pages.push(i);
+        }
+      } else {
+        pages.push(1, '...');
+        for (let i = currentPage - 1; i <= currentPage + 1; i++) {
+          pages.push(i);
+        }
+        pages.push('...', totalPages);
+      }
+    }
+
+    return pages;
+  };
+
+
   if (error) return <div className="text-center py-10 text-red-500">{error}</div>;
 
   return (
@@ -124,15 +174,20 @@ const JobsPage = () => {
         </div>
 
         {/* Results Count */}
-        <div className="mb-6">
+        <div className="mb-6 flex justify-between items-center">
           <p className="text-gray-600">
-            {filteredJobs.length} offre{filteredJobs.length > 1 ? 's' : ''} trouvée{filteredJobs.length > 1 ? 's' : ''}
+            {totalJobs} offre{totalJobs > 1 ? 's' : ''} trouvée{totalJobs > 1 ? 's' : ''}
+            {totalJobs > 0 && (
+              <span className="ml-2 text-sm text-gray-500">
+                (Page {currentPage} sur {totalPages} - Affichage de {startIndex + 1} à {Math.min(endIndex, totalJobs)})
+              </span>
+            )}
           </p>
         </div>
 
         {/* Job Listings */}
         <div className="space-y-6">
-          {visibleJobs.map((job) => (
+          {currentJobs.map((job) => (
             <div
               key={job.id}
               className="bg-white rounded-lg shadow-md hover:shadow-lg transition-shadow duration-300 p-6"
@@ -141,8 +196,16 @@ const JobsPage = () => {
                 <div className="flex-1">
                   <div className="flex items-start justify-between mb-4">
                     <div>
-                      {job.logo_url && (
-                        <img src={job.logo_url} alt="Logo entreprise" className="w-16 h-16 rounded-full object-cover mb-2" />
+                      {job.logo_url ? (
+                        <img
+                          src={job.logo_url.startsWith('/') ? job.logo_url : `/uploads/${job.logo_url}`}
+                          alt="Logo entreprise"
+                          className="w-16 h-16 rounded-full object-cover mb-2"
+                        />
+                      ) : (
+                        <div className="w-16 h-16 rounded-full bg-gray-200 flex items-center justify-center mb-2">
+                          <span className="text-gray-400">🏢</span>
+                        </div>
                       )}
                       <h3 className="text-xl font-semibold text-gray-900 mb-2">
                         {job.title}
@@ -151,11 +214,10 @@ const JobsPage = () => {
                         {job.company}
                       </p>
                     </div>
-                    <span className={`px-3 py-1 rounded-full text-sm font-medium ${
-                      job.type === 'Stage' ? 'bg-green-100 text-green-800' :
+                    <span className={`px-3 py-1 rounded-full text-sm font-medium ${job.type === 'Stage' ? 'bg-green-100 text-green-800' :
                       job.type === 'Temps partiel' ? 'bg-blue-100 text-blue-800' :
-                      'bg-purple-100 text-purple-800'
-                    }`}>
+                        'bg-purple-100 text-purple-800'
+                      }`}>
                       {job.type}
                     </span>
                   </div>
@@ -181,7 +243,7 @@ const JobsPage = () => {
                       {job.location}
                     </div>
                     <div className="flex items-center">
-                      <DollarSign className="h-4 w-4 mr-2" />
+                      <span className="text-gray-600 font-medium mr-2">FCFA</span>
                       {job.salary}
                     </div>
                     <div className="flex items-center">
@@ -236,7 +298,7 @@ const JobsPage = () => {
           ))}
         </div>
 
-        {filteredJobs.length === 0 && (
+        {totalJobs === 0 && (
           <div className="text-center py-12">
             <p className="text-gray-500 text-lg">
               Aucune offre ne correspond à vos critères de recherche.
@@ -247,15 +309,52 @@ const JobsPage = () => {
           </div>
         )}
 
-        {/* Load More Button */}
-        {visibleCount < filteredJobs.length && (
-          <div className="text-center mt-12">
+        {/* Pagination */}
+        {totalPages > 1 && (
+          <div className="flex justify-center items-center space-x-2 mt-12">
+            {/* Bouton Précédent */}
             <button
-              className="px-8 py-3 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition-colors font-medium"
-              onClick={() => setVisibleCount((prev) => prev + 6)}
+              onClick={() => goToPage(currentPage - 1)}
+              disabled={currentPage === 1}
+              className="px-4 py-2 text-sm font-medium text-gray-500 bg-white border border-gray-300 rounded-l-lg hover:bg-gray-50 hover:text-gray-700 disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              Charger plus d'offres
+              Précédent
             </button>
+
+            {/* Numéros de page */}
+            {getPageNumbers().map((page, index) => (
+              <React.Fragment key={index}>
+                {page === '...' ? (
+                  <span className="px-4 py-2 text-sm font-medium text-gray-700">...</span>
+                ) : (
+                  <button
+                    onClick={() => goToPage(page as number)}
+                    className={`px-4 py-2 text-sm font-medium border ${currentPage === page
+                      ? 'text-blue-600 bg-blue-50 border-blue-500'
+                      : 'text-gray-500 bg-white border-gray-300 hover:bg-gray-50 hover:text-gray-700'
+                      }`}
+                  >
+                    {page}
+                  </button>
+                )}
+              </React.Fragment>
+            ))}
+
+            {/* Bouton Suivant */}
+            <button
+              onClick={() => goToPage(currentPage + 1)}
+              disabled={currentPage === totalPages}
+              className="px-4 py-2 text-sm font-medium text-gray-500 bg-white border border-gray-300 rounded-r-lg hover:bg-gray-50 hover:text-gray-700 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              Suivant
+            </button>
+          </div>
+        )}
+
+        {/* Info pagination mobile */}
+        {totalPages > 1 && (
+          <div className="text-center mt-4 text-sm text-gray-500">
+            Page {currentPage} sur {totalPages} ({totalJobs} offres au total)
           </div>
         )}
 

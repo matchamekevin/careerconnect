@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { MapPin, Clock, DollarSign, ArrowRight } from 'lucide-react';
+import { MapPin, Clock, ArrowRight } from 'lucide-react';
 import JobDetailsModal from './JobDetailsModal';
 
 // Définition du type Job pour TypeScript
@@ -30,7 +30,11 @@ const RecentJobs = () => {
         return res.json();
       })
       .then((data) => {
-        setJobs(data);
+        // Trier par date de publication (plus récentes d'abord) et prendre seulement 8
+        const sortedJobs = data.sort((a: Job, b: Job) => {
+          return new Date(b.posted_at).getTime() - new Date(a.posted_at).getTime();
+        });
+        setJobs(sortedJobs.slice(0, 8));
         setLoading(false);
       })
       .catch((err) => {
@@ -54,7 +58,7 @@ const RecentJobs = () => {
           </p>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-12">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-12">
           {jobs.map((job) => (
             <div
               key={job.id}
@@ -62,8 +66,17 @@ const RecentJobs = () => {
               onClick={() => setSelectedJobId(job.id)}
             >
               <div className="flex flex-col items-center mb-4">
-                {job.logo_url && (
-                  <img src={job.logo_url} alt="Logo entreprise" className="w-12 h-12 rounded-full object-cover mb-2" />
+                {job.logo_url ? (
+                  <img
+                    src={job.logo_url.startsWith('/') ? job.logo_url : `/uploads/${job.logo_url}`}
+                    alt="Logo entreprise"
+                    className="w-12 h-12 rounded-full object-cover mb-2"
+                  />
+                ) : (
+                  <div className="w-12 h-12 rounded-full bg-gray-200 flex items-center justify-center mb-2">
+                    {/* Icône placeholder */}
+                    <span className="text-gray-400">🏢</span>
+                  </div>
                 )}
                 <div className="flex justify-between items-start w-full">
                   <div>
@@ -72,11 +85,10 @@ const RecentJobs = () => {
                     </h3>
                     <p className="text-blue-600 font-medium">{job.company}</p>
                   </div>
-                  <span className={`px-2 py-1 rounded-full text-xs font-medium ${
-                    job.type === 'Stage' ? 'bg-green-100 text-green-800' :
+                  <span className={`px-2 py-1 rounded-full text-xs font-medium ${job.type === 'Stage' ? 'bg-green-100 text-green-800' :
                     job.type === 'Temps partiel' ? 'bg-blue-100 text-blue-800' :
-                    'bg-purple-100 text-purple-800'
-                  }`}>
+                      'bg-purple-100 text-purple-800'
+                    }`}>
                     {job.type}
                   </span>
                 </div>
@@ -103,7 +115,7 @@ const RecentJobs = () => {
                   {job.location}
                 </div>
                 <div className="flex items-center">
-                  <DollarSign className="h-4 w-4 mr-2" />
+                  <span className="text-green-600 font-semibold text-xs mr-2">FCFA</span>
                   {job.salary}
                 </div>
                 <div className="flex items-center">

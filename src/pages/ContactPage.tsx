@@ -10,6 +10,12 @@ const ContactPage = () => {
     message: ''
   });
 
+  const [isLoading, setIsLoading] = useState(false);
+  const [responseMessage, setResponseMessage] = useState<{
+    type: 'success' | 'error';
+    text: string;
+  } | null>(null);
+
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
     setFormData({
       ...formData,
@@ -17,10 +23,64 @@ const ContactPage = () => {
     });
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    console.log('Contact form submitted:', formData);
-    // Handle form submission logic here
+    setIsLoading(true);
+    setResponseMessage(null);
+
+    // Validation côté client
+    if (!formData.name || !formData.email || !formData.subject || !formData.userType || !formData.message) {
+      setResponseMessage({
+        type: 'error',
+        text: 'Veuillez remplir tous les champs obligatoires.'
+      });
+      setIsLoading(false);
+      return;
+    }
+
+    try {
+      console.log('📤 Envoi du formulaire de contact:', formData);
+
+      const response = await fetch('/api/contact', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(formData),
+      });
+
+      const data = await response.json();
+      console.log('📥 Réponse du serveur:', data);
+
+      if (data.success) {
+        setResponseMessage({
+          type: 'success',
+          text: '✅ Votre message a été envoyé avec succès ! Notre équipe vous répondra dans les plus brefs délais.'
+        });
+
+        // Réinitialiser le formulaire
+        setFormData({
+          name: '',
+          email: '',
+          subject: '',
+          userType: '',
+          message: ''
+        });
+      } else {
+        setResponseMessage({
+          type: 'error',
+          text: data.error || 'Une erreur est survenue lors de l\'envoi du message.'
+        });
+      }
+    } catch (error) {
+      console.error('❌ Erreur lors de l\'envoi:', error);
+      setResponseMessage({
+        type: 'error',
+        text: 'Erreur de connexion. Veuillez vérifier votre connexion internet et réessayer.'
+      });
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   return (
@@ -41,7 +101,7 @@ const ContactPage = () => {
           <div className="lg:col-span-1">
             <div className="bg-white rounded-xl shadow-lg p-8">
               <h2 className="text-2xl font-bold text-gray-900 mb-6">Informations de contact</h2>
-              
+
               <div className="space-y-6">
                 <div className="flex items-start space-x-4">
                   <div className="flex items-center justify-center w-12 h-12 bg-blue-100 rounded-lg">
@@ -49,7 +109,7 @@ const ContactPage = () => {
                   </div>
                   <div>
                     <h3 className="font-semibold text-gray-900">Email</h3>
-                    <p className="text-gray-600">contact@jobtogo.tg</p>
+                    <p className="text-gray-600">matchamegnatikevin894@gmail.com</p>
                     <p className="text-sm text-gray-500">Réponse sous 24h</p>
                   </div>
                 </div>
@@ -60,7 +120,8 @@ const ContactPage = () => {
                   </div>
                   <div>
                     <h3 className="font-semibold text-gray-900">Téléphone</h3>
-                    <p className="text-gray-600">+228 XX XX XX XX</p>
+                    <p className="text-gray-600">+228 70 47 24 36</p>
+                    <p className="text-gray-600">+228 96 73 22 47</p>
                     <p className="text-sm text-gray-500">Lun-Ven: 8h-18h</p>
                   </div>
                 </div>
@@ -113,7 +174,17 @@ const ContactPage = () => {
           <div className="lg:col-span-2">
             <div className="bg-white rounded-xl shadow-lg p-8">
               <h2 className="text-2xl font-bold text-gray-900 mb-6">Envoyez-nous un message</h2>
-              
+
+              {/* Message de réponse */}
+              {responseMessage && (
+                <div className={`mb-6 p-4 rounded-lg ${responseMessage.type === 'success'
+                  ? 'bg-green-50 border border-green-200 text-green-800'
+                  : 'bg-red-50 border border-red-200 text-red-800'
+                  }`}>
+                  <p className="text-sm font-medium">{responseMessage.text}</p>
+                </div>
+              )}
+
               <form onSubmit={handleSubmit} className="space-y-6">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   <div>
@@ -209,17 +280,27 @@ const ContactPage = () => {
 
                 <div className="bg-blue-50 p-4 rounded-lg">
                   <p className="text-sm text-blue-800">
-                    <strong>💡 Conseil :</strong> Pour un support plus rapide, n'hésitez pas à inclure des captures d'écran 
+                    <strong>💡 Conseil :</strong> Pour un support plus rapide, n'hésitez pas à inclure des captures d'écran
                     ou des détails spécifiques sur votre problème.
                   </p>
                 </div>
 
                 <button
                   type="submit"
-                  className="w-full flex items-center justify-center px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium"
+                  disabled={isLoading}
+                  className="w-full flex items-center justify-center px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors font-medium"
                 >
-                  <Send className="h-5 w-5 mr-2" />
-                  Envoyer le message
+                  {isLoading ? (
+                    <>
+                      <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white mr-2"></div>
+                      Envoi en cours...
+                    </>
+                  ) : (
+                    <>
+                      <Send className="h-5 w-5 mr-2" />
+                      Envoyer le message
+                    </>
+                  )}
                 </button>
               </form>
             </div>

@@ -1,50 +1,45 @@
 #!/bin/bash
-# Script d'exécution simultanée CareerConnect (Postgres + backend + frontend)
+# Script simple pour démarrer CareerConnect (Postgres + backend + frontend)
 # À exécuter depuis la racine du projet
 
 set -e
+# Définit le répertoire racine du projet
+ROOT_DIR="$(pwd)"
 
-# 1. (Optionnel) Démarrer PostgreSQL (décommente si besoin)
-# sudo service postgresql start
-sudo systemctl restart postgresql
+echo "🚀 Démarrage du projet CareerConnect..."
 
-# 2. Dépendances
-# npm install
-cd server && npm install && cd ..
+# 1. Démarrer PostgreSQL
+echo "📊 Démarrage de PostgreSQL..."
+sudo systemctl start postgresql
+sleep 2
 
-# Fonction pour relancer un service si crash
-restart_backend() {
-  while true; do
-    cd server && npm start &
-    BACK_PID=$!
-    cd ..
-    wait $BACK_PID
-    echo "[BACKEND] Arrêté, relance dans 2s..."
-    sleep 2
-  done
-}
+ # 2. Démarrer le backend
+ echo "🔧 Arrêt des anciens serveurs backend (port 5000)..."
+ # Tuer tout processus écoutant sur le port 5000
+ lsof -ti tcp:5000 | xargs -r kill -9 || true
+ pkill -f "node.*index.js" || true
+ echo "🔧 Démarrage du backend..."
+ cd server && node index.js &
+BACK_PID=$!
+cd ..
+sleep 3
 
-restart_frontend() {
-  while true; do
-    npm run dev &
-    FRONT_PID=$!
-    wait $FRONT_PID
-    echo "[FRONTEND] Arrêté, relance dans 2s..."
-    sleep 2
-  done
-}
-
-# 3. Lancement backend et frontend en parallèle
-restart_backend &
-BACK_LOOP_PID=$!
-restart_frontend &
-FRONT_LOOP_PID=$!
+# 3. Démarrer le frontend
+echo "🌐 Démarrage du frontend..."
+# Se placer dans le répertoire racine pour lancer le frontend
+cd "$ROOT_DIR"
+npm run dev &
+FRONT_PID=$!
 
 # Gestion arrêt CTRL+C
-trap 'echo -e "\nArrêt demandé, fermeture des serveurs..."; kill $BACK_LOOP_PID $FRONT_LOOP_PID; exit 0' SIGINT SIGTERM
+trap 'echo -e "\n🛑 Arrêt des serveurs..."; kill $BACK_PID $FRONT_PID; exit 0' SIGINT SIGTERM
 
 sleep 2
-echo -e "\nTout est lancé ! Accédez à : http://localhost:5173"
+echo -e "\n✅ Projet CareerConnect démarré !"
+echo -e "🌐 Frontend : http://localhost:5173"
+echo -e "🔧 Backend API : http://localhost:5000"
+echo -e "📊 Base de données : PostgreSQL"
+echo -e "\nAppuyez sur CTRL+C pour arrêter"
 
 # Attente infinie
-wait $BACK_LOOP_PID $FRONT_LOOP_PID
+wait $BACK_PID $FRONT_PID

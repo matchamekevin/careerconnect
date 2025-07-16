@@ -3,9 +3,8 @@ const nodemailer = require('nodemailer');
 
 // Configuration temporaire pour tests Gmail
 const gmailConfig = {
-  user: 'matchamegnatikevin894@gmail.com',
-  // Vous devez générer un "mot de passe d'application" sur Gmail
-  pass: 'votre_mot_de_passe_app_16_caracteres'
+  user: process.env.SMTP_USER,
+  pass: process.env.SMTP_PASS
 };
 
 const createGmailTransporter = () => {

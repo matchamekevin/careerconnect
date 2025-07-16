@@ -79,7 +79,9 @@ app.post('/api/login-student', async (req, res) => {
     if (user.rows.length === 0) {
       return res.status(401).json({ error: 'Email/prénom ou mot de passe incorrect.' });
     }
-    res.json({ success: true, user: user.rows[0] });
+    // Ne pas renvoyer le hash du mot de passe
+    const { password_hash, ...userWithoutPassword } = user.rows[0];
+    res.json({ success: true, user: userWithoutPassword });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -113,11 +115,11 @@ app.post('/api/login-company', async (req, res) => {
       [email, password]
     );
     if (company.rows.length === 0) {
-      return res.status(401).json({ error: 'Email/nom de contact ou mot de passe incorrect.' });
+      return res.status(401).json({ error: 'Email ou mot de passe incorrect.' });
     }
-    // Marquer comme connecté
-    await pool.query('UPDATE companies SET is_connected = true WHERE email = $1', [company.rows[0].email]);
-    res.json({ success: true, company: company.rows[0] });
+    // Ne pas renvoyer le hash du mot de passe
+    const { password_hash, ...companyWithoutPassword } = company.rows[0];
+    res.json({ success: true, company: companyWithoutPassword });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

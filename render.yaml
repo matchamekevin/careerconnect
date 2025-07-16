@@ -12,7 +12,6 @@ services:
   # Application Vite (statique)
   - type: static_site
     name: careerconnect-frontend
-    env: static
     plan: free
     region: oregon
     buildCommand: |

@@ -10,7 +10,7 @@ services:
     root: server
 
   # Application Vite (statique)
-  - type: static
+  - type: static_site
     name: careerconnect-frontend
     env: static
     plan: free

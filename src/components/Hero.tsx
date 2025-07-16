@@ -36,7 +36,7 @@ const Hero = () => {
       <div
         className="absolute inset-0 w-full h-full z-0"
         style={{
-          backgroundImage: `url('../im/Livreur.jpeg')`,
+          backgroundImage: `url('../assets/Livreur.jpeg')`,
           backgroundSize: 'cover',
           backgroundPosition: 'center',
           filter: 'blur(3px) brightness(0.3)', // brightness abaissé pour assombrir

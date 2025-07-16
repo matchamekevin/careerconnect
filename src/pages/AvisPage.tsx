@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import axios from 'axios';
+import api from '../utils/api';
 import { MessageCircle, ThumbsUp, Reply, Star, User, Clock, Send, Filter } from 'lucide-react';
 
 interface Review {
@@ -27,7 +27,7 @@ const AvisPage = () => {
     setLoading(true);
     setError(null);
     try {
-      const res = await axios.get('/api/reviews');
+      const res = await api.get('/api/reviews');
       if (res.data && res.data.reviews && Array.isArray(res.data.reviews)) {
         setReviews(res.data.reviews);
         // Simuler des likes aléatoirement
@@ -68,7 +68,7 @@ const AvisPage = () => {
         user_email: 'anonymous@example.com'
       };
 
-      const response = await axios.post('/api/reviews', payload);
+      const response = await api.post('/api/reviews', payload);
 
       if (response.data) {
         setContent('');

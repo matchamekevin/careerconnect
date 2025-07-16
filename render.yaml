@@ -1,0 +1,21 @@
+services:
+  # API Node/Express
+  - type: web
+    name: careerconnect-api
+    env: node
+    plan: free
+    region: oregon
+    buildCommand: npm install
+    startCommand: npm start
+    root: server
+
+  # Application Vite (statique)
+  - type: static
+    name: careerconnect-frontend
+    env: static
+    plan: free
+    region: oregon
+    buildCommand: |
+      npm install
+      npm run build
+    publishDirectory: dist

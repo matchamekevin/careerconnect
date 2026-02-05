@@ -69,18 +69,6 @@ const Features = () => {
             </div>
           ))}
         </div>
-
-        {/* Trust badges */}
-        <div className="mt-20 text-center">
-          <p className="text-gray-500 mb-8 font-medium">Ils nous font confiance</p>
-          <div className="flex flex-wrap justify-center items-center gap-8 opacity-60">
-            {['Université de Lomé', 'UCAO', 'IAM', 'ESTIA', 'FORMATEC'].map((name, i) => (
-              <div key={i} className="px-6 py-3 bg-gray-100 rounded-xl font-semibold text-gray-700">
-                {name}
-              </div>
-            ))}
-          </div>
-        </div>
       </div>
     </section>
   );

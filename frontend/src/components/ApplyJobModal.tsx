@@ -2,10 +2,12 @@ import React, { useState, useEffect } from 'react';
 import { Mail, Phone, FileText, MapPin } from 'lucide-react';
 import { openWhatsApp } from '../utils/whatsappUtils';
 import { useToastContext } from '../contexts/ToastContext';
+import { applicationService } from '../services/api';
 
 interface ApplyJobModalProps {
   jobId: number;
   onClose: () => void;
+  studentId?: string;
 }
 
 // Configuration des pays et leurs préfixes
@@ -17,7 +19,7 @@ const COUNTRIES = {
   'CI': { name: 'Côte d\'Ivoire', prefix: '+225', flag: '🇨🇮', pattern: /^\+225\s?\d{2}\s?\d{2}\s?\d{2}\s?\d{2}$/ }
 };
 
-const ApplyJobModal: React.FC<ApplyJobModalProps> = ({ jobId, onClose }) => {
+const ApplyJobModal: React.FC<ApplyJobModalProps> = ({ jobId, onClose, studentId }) => {
   const [email, setEmail] = useState('');
   const [phone, setPhone] = useState('');
   const [cv, setCv] = useState<File | null>(null);
@@ -40,7 +42,7 @@ const ApplyJobModal: React.FC<ApplyJobModalProps> = ({ jobId, onClose }) => {
           setDetectedCountry(data.country_code);
           setSelectedCountry(data.country_code);
         }
-      } catch (error) {
+      } catch {
         // Fallback vers Togo si la détection échoue
         setDetectedCountry('TG');
         setSelectedCountry('TG');
@@ -108,7 +110,8 @@ const ApplyJobModal: React.FC<ApplyJobModalProps> = ({ jobId, onClose }) => {
       email,
       phone,
       selectedCountry,
-      cv: cv?.name
+      cv: cv?.name,
+      studentId
     });
 
     // Validation des champs
@@ -127,64 +130,39 @@ const ApplyJobModal: React.FC<ApplyJobModalProps> = ({ jobId, onClose }) => {
       return;
     }
 
-    setLoading(true);
-    const formData = new FormData();
-    formData.append('job_id', jobId.toString());
-    formData.append('email', email);
-    formData.append('phone', phone);
-    formData.append('country', selectedCountry);
-    formData.append('cv', cv);
+    // Vérifier si on a un studentId
+    const currentStudentId = studentId || (() => {
+      const studentUser = sessionStorage.getItem('studentUser');
+      return studentUser ? JSON.parse(studentUser).id : null;
+    })();
 
-    console.log('📤 Envoi des données vers /api/apply');
+    if (!currentStudentId) {
+      showError('Utilisateur non connecté. Veuillez vous connecter.');
+      return;
+    }
+
+    setLoading(true);
 
     try {
-      const res = await fetch('/api/apply', {
-        method: 'POST',
-        body: formData
-      });
-      const data = await res.json();
+      await applicationService.createWithCV({
+        student_id: currentStudentId,
+        job_id: jobId,
+        email,
+        phone,
+        country: selectedCountry,
+        status: 'pending'
+      }, cv);
 
-      console.log('📥 Réponse du serveur:', data);
+      showSuccess('Candidature envoyée avec succès !');
 
-      if (data.success) {
-        showSuccess('Candidature envoyée avec succès !');
+      // Ouvrir automatiquement WhatsApp si possible
+      // Pour l'instant, on ne peut pas générer les liens WhatsApp sans backend
+      // TODO: Implémenter la génération des liens WhatsApp côté frontend
 
-        // Ouvrir automatiquement WhatsApp si les liens sont disponibles
-        if (data.whatsappLinks && data.whatsappLinks.studentToCompany) {
-          console.log('📱 Ouverture automatique de WhatsApp...');
-
-          // Afficher un message d'information avant l'ouverture
-          showInfo('Ouverture de WhatsApp...');
-
-          // Ouvrir WhatsApp avec la nouvelle logique
-          setTimeout(async () => {
-            try {
-              // Essayer d'extraire le numéro et le message du lien
-              const whatsappUrl = new URL(data.whatsappLinks.studentToCompany);
-              const phoneNumber = whatsappUrl.searchParams.get('phone');
-              const message = whatsappUrl.searchParams.get('text');
-
-              if (phoneNumber && message) {
-                await openWhatsApp(phoneNumber, decodeURIComponent(message));
-              } else {
-                // Fallback vers l'ancienne méthode
-                window.open(data.whatsappLinks.studentToCompany, '_blank');
-              }
-            } catch (error) {
-              console.error('Erreur lors de l\'ouverture de WhatsApp:', error);
-              // Fallback vers l'ancienne méthode
-              window.open(data.whatsappLinks.studentToCompany, '_blank');
-            }
-          }, 1500);
-        }
-
-        setTimeout(onClose, 2000);
-      } else {
-        showError(data.error || 'Erreur lors de l\'envoi de la candidature');
-      }
+      setTimeout(onClose, 2000);
     } catch (error) {
       console.error('❌ Erreur:', error);
-      showError('Erreur de connexion. Veuillez réessayer.');
+      showError('Erreur lors de l\'envoi de la candidature. Veuillez réessayer.');
     } finally {
       setLoading(false);
     }

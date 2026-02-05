@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { useToastContext } from '../contexts/ToastContext';
+import { companyService } from '../services/api';
 
 interface CompanyProfileModalProps {
   companyId: number | null;
@@ -27,21 +28,17 @@ const CompanyProfileModal: React.FC<CompanyProfileModalProps> = ({ companyId, on
   useEffect(() => {
     if (companyId) {
       setLoading(true);
-      fetch(`/api/companies/${companyId}`)
-        .then((res) => {
-          if (!res.ok) throw new Error('Erreur lors du chargement du profil entreprise');
-          return res.json();
-        })
+      companyService.getById(companyId)
         .then((data) => {
           setCompany(data);
           setLoading(false);
         })
         .catch((err) => {
-          showError(err.message);
+          showError('Erreur lors du chargement du profil entreprise');
           setLoading(false);
         });
     }
-  }, [companyId]);
+  }, [companyId, showError]);
 
   if (!companyId) return null;
 

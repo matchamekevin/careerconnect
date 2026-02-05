@@ -4,6 +4,7 @@ import { User, Mail, Lock, Eye, EyeOff, GraduationCap, ArrowLeft, Sparkles } fro
 import SelectWithOther from '../components/SelectWithOther';
 import { UNIVERSITIES_TOGO, STUDY_FIELDS_TOGO, STUDY_LEVELS } from '../constants/formOptions';
 import { useToastContext } from '../contexts/ToastContext';
+import { userService } from '../services/api';
 
 const StudentAuth = () => {
   const [isLogin, setIsLogin] = useState(true);
@@ -45,45 +46,38 @@ const StudentAuth = () => {
     e.preventDefault();
     try {
       if (isLogin) {
-        const res = await fetch('/api/login-student', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ email: formData.email, password: formData.password })
-        });
-        const data = await res.json();
-        if (data.success) {
-          sessionStorage.setItem('studentUser', JSON.stringify(data.user));
-          showSuccess('Connexion réussie !');
-          const pendingJobId = sessionStorage.getItem('pendingJobApplication');
-          if (pendingJobId && isFromJobApplication) {
-            navigate(`/student-dashboard?applyToJob=${pendingJobId}`);
-          } else {
-            navigate('/student-dashboard');
-          }
+        // Connexion
+        const user = await userService.login(formData.email, formData.password);
+        sessionStorage.setItem('studentUser', JSON.stringify(user));
+        showSuccess('Connexion réussie !');
+        const pendingJobId = sessionStorage.getItem('pendingJobApplication');
+        if (pendingJobId && isFromJobApplication) {
+          navigate(`/student-dashboard?applyToJob=${pendingJobId}`);
         } else {
-          showError(data.error || 'Erreur de connexion');
+          navigate('/student-dashboard');
         }
       } else {
+        // Inscription
         if (formData.password !== formData.confirmPassword) {
           showError('Les mots de passe ne correspondent pas');
           return;
         }
-        const res = await fetch('/api/register-student', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(formData)
+        await userService.register({
+          first_name: formData.firstName,
+          last_name: formData.lastName,
+          email: formData.email,
+          password: formData.password,
+          university: formData.university,
+          level: formData.level,
+          field: formData.field
         });
-        const data = await res.json();
-        if (data.success) {
-          showSuccess('Compte créé avec succès !');
-          setIsLogin(true);
-        } else {
-          showError(data.error || 'Erreur lors de la création du compte');
-        }
+        showSuccess('Compte créé avec succès !');
+        setIsLogin(true);
       }
-    } catch (error) {
-      console.error('Erreur réseau:', error);
-      showError('Erreur de connexion au serveur. Veuillez réessayer.');
+    } catch (error: unknown) {
+      console.error('Erreur:', error);
+      const message = error instanceof Error ? error.message : 'Une erreur est survenue';
+      showError(message);
     }
   };
 

@@ -1,6 +1,8 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import ApplyJobModal from './ApplyJobModal';
+import { jobService } from '../services/api';
+import { getImageUrl } from '../utils/api';
 
 interface JobDetailsModalProps {
   jobId: number | null;
@@ -31,11 +33,7 @@ const JobDetailsModal: React.FC<JobDetailsModalProps> = ({ jobId, onClose }) => 
   useEffect(() => {
     if (jobId) {
       setLoading(true);
-      fetch(`/api/jobs/${jobId}`)
-        .then((res) => {
-          if (!res.ok) throw new Error('Erreur lors du chargement des détails');
-          return res.json();
-        })
+      jobService.getById(jobId)
         .then((data) => {
           setJob(data);
           setLoading(false);
@@ -117,7 +115,16 @@ const JobDetailsModal: React.FC<JobDetailsModalProps> = ({ jobId, onClose }) => 
             <button className="w-full bg-gray-900 text-white py-2 rounded hover:bg-gray-800 mt-4" onClick={handleApplyClick}>
               Postuler
             </button>
-            {showApply && <ApplyJobModal jobId={job.id} onClose={() => setShowApply(false)} />}
+            {showApply && (
+              <ApplyJobModal
+                jobId={job.id}
+                onClose={() => setShowApply(false)}
+                studentId={(() => {
+                  const studentUser = sessionStorage.getItem('studentUser');
+                  return studentUser ? JSON.parse(studentUser).id : undefined;
+                })()}
+              />
+            )}
           </>
         )}
       </div>

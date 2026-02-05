@@ -4,15 +4,17 @@ import FCFAInput from '../components/FCFAInput';
 import SelectWithOther from '../components/SelectWithOther';
 import { CONTRACT_TYPES, LOCATIONS_TOGO } from '../constants/formOptions';
 import { useToastContext } from '../contexts/ToastContext';
+import { companyService, jobService, applicationService } from '../services/api';
+import { Company, Job, Application } from '../utils/supabase';
 
 const CompanyDashboard = () => {
   const { showSuccess, showError } = useToastContext();
   const [activeTab, setActiveTab] = useState('overview');
   const [showJobForm, setShowJobForm] = useState(false);
   const [showProfileEdit, setShowProfileEdit] = useState(false);
-  const [company, setCompany] = useState<any>(null);
-  const [jobs, setJobs] = useState<any[]>([]);
-  const [applications, setApplications] = useState<any[]>([]);
+  const [company, setCompany] = useState<Company | null>(null);
+  const [jobs, setJobs] = useState<Job[]>([]);
+  const [applications, setApplications] = useState<Application[]>([]);
   const [stats, setStats] = useState({ jobs: 0, applications: 0, views: 0 });
   const [logoSrc, setLogoSrc] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -28,17 +30,26 @@ const CompanyDashboard = () => {
       const parsedCompany = JSON.parse(companyData);
       setCompany(parsedCompany);
       if (parsedCompany.logo_url) {
-        setLogoSrc(`http://localhost:5000${parsedCompany.logo_url}`);
+        setLogoSrc(parsedCompany.logo_url);
       }
 
       // Charger les données
-      fetch(`/api/companies/${parsedCompany.id}`)
-        .then(res => res.json())
+      companyService.getById(parsedCompany.id)
         .then(data => {
           setCompany(data);
-          fetch(`/api/company/${data.id}/jobs`).then(res => res.json()).then(setJobs);
-          fetch(`/api/company/${data.id}/applications`).then(res => res.json()).then(setApplications);
-          fetch(`/api/company/${data.id}/stats`).then(res => res.json()).then(setStats);
+          return Promise.all([
+            jobService.getByCompanyId(data.id),
+            applicationService.getByCompanyId(data.id)
+          ]);
+        })
+        .then(([jobsData, applicationsData]) => {
+          setJobs(jobsData);
+          setApplications(applicationsData);
+          // TODO: Calculer les stats côté client ou ajouter une fonction stats
+          setStats({ jobs: jobsData.length, applications: applicationsData.length });
+        })
+        .catch(err => {
+          console.warn('Erreur chargement données entreprise:', err.message);
         });
     }
   }, []);
@@ -63,7 +74,7 @@ const CompanyDashboard = () => {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ logo_url: data.url })
         });
-        setLogoSrc(`http://localhost:5000${data.url}`);
+        setLogoSrc(data.url);
         const updatedCompany = { ...company, logo_url: data.url };
         setCompany(updatedCompany);
         sessionStorage.setItem('companyUser', JSON.stringify(updatedCompany));
@@ -91,33 +102,37 @@ const CompanyDashboard = () => {
 
     const body = JSON.stringify(payload);
 
-    const res = await fetch(url, {
-      method,
-      headers: { 'Content-Type': 'application/json' },
-      body
-    });
-    const data = await res.json();
-    if (data.success) {
+    try {
+      if (editingJobId) {
+        await jobService.update(editingJobId, payload);
+      } else {
+        await jobService.create(payload);
+      }
       showSuccess(editingJobId ? 'Offre modifiée !' : 'Offre publiée !');
       setShowJobForm(false);
       setJobForm({ title: '', description: '', location: '', type: '', salary: '', tags: '', company: '' });
       setEditingJobId(null);
-      fetch(`/api/company/${company.id}/jobs`).then(res => res.json()).then(setJobs);
-      fetch(`/api/company/${company.id}/stats`).then(res => res.json()).then(setStats);
-    } else {
-      showError(data.error || 'Erreur lors de la publication');
+      // Recharger les offres et statistiques
+      jobService.getByCompanyId(company.id).then(setJobs);
+      companyService.getCompanyStats(company.id).then(setStats);
+    } catch (error) {
+      showError('Erreur lors de la publication');
     }
   };
 
   const handleDeleteJob = async (id: number) => {
     if (!window.confirm('Supprimer cette offre ?')) return;
-    await fetch(`/api/jobs/${id}`, { method: 'DELETE' });
-    setJobs(jobs.filter(j => j.id !== id));
-    // Actualiser les statistiques
-    fetch(`/api/company/${company.id}/stats`).then(res => res.json()).then(setStats);
+    try {
+      await jobService.delete(id);
+      setJobs(jobs.filter(j => j.id !== id));
+      // Actualiser les statistiques
+      companyService.getCompanyStats(company.id).then(setStats);
+    } catch (error) {
+      showError('Erreur lors de la suppression');
+    }
   };
 
-  const handleEditJob = (job: any) => {
+  const handleEditJob = (job: Job) => {
     setJobForm({
       title: job.title,
       company: company?.name || '',
@@ -288,7 +303,7 @@ const CompanyDashboard = () => {
                 </div>
               ) : (
                 <div className="space-y-3">
-                  {applications.slice(0, 5).map((app: any, index: number) => (
+                  {applications.slice(0, 5).map((app: Application, index: number) => (
                     <div 
                       key={app.id} 
                       className="flex items-center justify-between p-4 bg-white/80 rounded-xl border border-gray-100 hover:shadow-md transition-all animate-fade-in"
@@ -350,7 +365,7 @@ const CompanyDashboard = () => {
                 </div>
               ) : (
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                  {jobs.map((job: any, index: number) => (
+                  {jobs.map((job: Job, index: number) => (
                     <div 
                       key={job.id} 
                       className="bg-white rounded-2xl p-5 border border-gray-100 hover:shadow-xl transition-all animate-fade-in group"
@@ -360,7 +375,7 @@ const CompanyDashboard = () => {
                         <div className="flex items-center gap-3">
                           {job.logo_url ? (
                             <img 
-                              src={job.logo_url.startsWith('http') ? job.logo_url : `http://localhost:5000${job.logo_url}`} 
+                              src={job.logo_url} 
                               alt="Logo" 
                               className="w-12 h-12 rounded-xl object-cover" 
                             />
@@ -444,7 +459,7 @@ const CompanyDashboard = () => {
               </div>
             ) : (
               <div className="space-y-4">
-                {applications.map((app: any, index: number) => (
+                {applications.map((app: Application, index: number) => (
                   <div 
                     key={app.id} 
                     className="bg-white rounded-2xl p-5 border border-gray-100 hover:shadow-lg transition-all animate-fade-in"
@@ -474,12 +489,12 @@ const CompanyDashboard = () => {
                           <button 
                             className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-emerald-500 to-teal-500 text-white rounded-xl hover:shadow-lg hover:shadow-emerald-500/30 transition-all text-sm font-medium"
                             onClick={async () => {
-                              await fetch(`/api/applications/${app.id}/status`, {
-                                method: 'PUT',
-                                headers: { 'Content-Type': 'application/json' },
-                                body: JSON.stringify({ status: 'Accepté' })
-                              });
-                              setApplications(applications.map(a => a.id === app.id ? { ...a, status: 'Accepté' } : a));
+                              try {
+                                await applicationService.updateStatus(app.id, 'Accepté');
+                                setApplications(applications.map(a => a.id === app.id ? { ...a, status: 'Accepté' } : a));
+                              } catch (error) {
+                                showError('Erreur lors de la mise à jour du statut');
+                              }
                             }}
                           >
                             <CheckCircle className="h-4 w-4" />
@@ -488,12 +503,12 @@ const CompanyDashboard = () => {
                           <button 
                             className="flex items-center gap-2 px-4 py-2 bg-white border-2 border-red-200 text-red-600 rounded-xl hover:bg-red-50 transition-all text-sm font-medium"
                             onClick={async () => {
-                              await fetch(`/api/applications/${app.id}/status`, {
-                                method: 'PUT',
-                                headers: { 'Content-Type': 'application/json' },
-                                body: JSON.stringify({ status: 'Refusé' })
-                              });
-                              setApplications(applications.map(a => a.id === app.id ? { ...a, status: 'Refusé' } : a));
+                              try {
+                                await applicationService.updateStatus(app.id, 'Refusé');
+                                setApplications(applications.map(a => a.id === app.id ? { ...a, status: 'Refusé' } : a));
+                              } catch (error) {
+                                showError('Erreur lors de la mise à jour du statut');
+                              }
                             }}
                           >
                             <XCircle className="h-4 w-4" />
@@ -690,7 +705,7 @@ const CompanyDashboard = () => {
   );
 };
 
-const ProfileForm = ({ company, setCompany, onClose }: { company: any, setCompany: any, onClose?: () => void }) => {
+const ProfileForm = ({ company, setCompany, onClose }: { company: Company, setCompany: (company: Company) => void, onClose?: () => void }) => {
   const [form, setForm] = useState({
     name: company.name || '',
     contact_name: company.contact_name || '',
@@ -705,19 +720,14 @@ const ProfileForm = ({ company, setCompany, onClose }: { company: any, setCompan
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    const res = await fetch(`/api/company/${company.id}`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(form)
-    });
-    const data = await res.json();
-    if (data.success) {
+    try {
+      await companyService.update(company.id, form);
       showSuccess('Profil mis à jour !');
       setCompany({ ...company, ...form });
       sessionStorage.setItem('companyUser', JSON.stringify({ ...company, ...form }));
       if (onClose) onClose();
-    } else {
-      showError(data.error || 'Erreur lors de la mise à jour');
+    } catch (error) {
+      showError('Erreur lors de la mise à jour');
     }
   };
 

@@ -3,19 +3,13 @@ import { useNavigate } from 'react-router-dom';
 import { Shield, Trash2, CheckCircle2, Clock, Mail, ChevronLeft, ChevronRight, Briefcase, MessageSquare, BarChart3, Settings, Plus, Home, Edit, Search, Building, GraduationCap, Sparkles, Users } from 'lucide-react';
 import { useLocalStorage } from '../hooks/useStorage';
 import { useToastContext } from '../contexts/ToastContext';
+import { adminService, jobService, companyService, contactService, reviewService, userService } from '../services/api';
+import { getImageUrl } from '../utils/api';
+import type { Review, Job, Company, ContactMessage } from '../utils/supabase';
 
 const AdminDashboard = () => {
   const navigate = useNavigate();
   const [companies, setCompanies] = useState([]);
-
-  // Fonction utilitaire pour construire les URLs d'images
-  const getImageUrl = (path: string | null) => {
-    if (!path) return null;
-    if (path.startsWith('http')) return path;
-    // Encoder les caractères spéciaux dans l'URL
-    const encodedPath = path.split('/').map(segment => encodeURIComponent(segment)).join('/');
-    return `http://localhost:5000${encodedPath}`;
-  };
   const [jobs, setJobs] = useState([]);
   const [contactMessages, setContactMessages] = useState([]);
   const [reviews, setReviews] = useState([]);
@@ -38,7 +32,7 @@ const AdminDashboard = () => {
   const [showJobModal, setShowJobModal] = useState(false);
   const [showAllMessages, setShowAllMessages] = useState(false);
   const [showReviewModal, setShowReviewModal] = useState(false);
-  const [editingReview, setEditingReview] = useState<any>(null);
+  const [editingReview, setEditingReview] = useState<Review | null>(null);
   const [newReviewResponse, setNewReviewResponse] = useState('');
   const [activeSection, setActiveSection] = useLocalStorage('adminDashboardActiveSection', 'dashboard');
   const [jobsFilter, setJobsFilter] = useLocalStorage('adminDashboardJobsFilter', 'all');
@@ -56,36 +50,41 @@ const AdminDashboard = () => {
   const { showSuccess, showError } = useToastContext();
 
   // Nouveaux états pour la gestion avancée des offres
-  const [editingJob, setEditingJob] = useState<any>(null);
+  const [editingJob, setEditingJob] = useState<Job | null>(null);
   const [showEditModal, setShowEditModal] = useState(false);
   const [jobsSearchTerm, setJobsSearchTerm] = useState('');
   const [error, setError] = useState<string | null>(null);
   void setError; // Utilisé pour la gestion d'erreurs futures
 
+  const loadCompanies = async () => {
+    try {
+      const data = await companyService.getAll();
+      console.log('companies:', data);
+      setCompanies(data);
+    } catch (e) {
+      console.warn('Erreur chargement entreprises:', (e as Error).message);
+      setCompanies([]);
+    }
+  };
+
   useEffect(() => {
     setLoadingStats(true);
 
     // Charger les statistiques
-    fetch('/api/admin/stats')
-      .then(res => res.json())
+    adminService.getStats()
       .then(data => {
         setStats(data);
         setLoadingStats(false);
       })
       .catch(e => {
-        showError(e.message);
+        console.warn('Erreur chargement stats:', e.message);
+        setStats({ companies: 0, jobs: 0, students: 0, messages: 0, reviews: 0 });
         setLoadingStats(false);
       });
   }, []);
 
   useEffect(() => {
-    fetch('/api/companies')
-      .then(res => res.json())
-      .then(data => {
-        console.log('companies:', data);
-        setCompanies(data);
-      })
-      .catch(e => showError(e.message));
+    loadCompanies();
 
     // Charger les offres avec statistiques
     loadJobs();
@@ -101,20 +100,19 @@ const AdminDashboard = () => {
     setLoadingMessages(true);
     try {
       const limit = showAllMessages ? 50 : 10;
-      const offset = (page - 1) * limit;
-      const response = await fetch(`/api/contact/messages?limit=${limit}&offset=${offset}`);
-      const data = await response.json();
-      if (data.success) {
-        setContactMessages(data.messages);
-        setMessagesPagination({
-          currentPage: data.page || page,
-          totalPages: data.totalPages || 1,
-          total: data.total || 0,
-          limit: limit
-        });
-        // Mettre à jour les stats avec le nombre total de messages
-        setStats(prev => ({ ...prev, messages: data.total }));
-      }
+      const allMessages = await contactService.getAll();
+      const total = allMessages.length;
+      const totalPages = Math.max(1, Math.ceil(total / limit));
+      const safePage = Math.min(Math.max(page, 1), totalPages);
+      const offset = (safePage - 1) * limit;
+      setContactMessages(allMessages.slice(offset, offset + limit));
+      setMessagesPagination({
+        currentPage: safePage,
+        totalPages,
+        total,
+        limit
+      });
+      setStats(prev => ({ ...prev, messages: total }));
     } catch (error) {
       console.error('Erreur lors du chargement des messages:', error);
     } finally {
@@ -125,14 +123,20 @@ const AdminDashboard = () => {
   const loadReviews = async (page = 1) => {
     setLoadingReviews(true);
     try {
-      const response = await fetch(`/api/reviews?page=${page}&limit=10`);
-      const data = await response.json();
-
-      if (data.reviews) {
-        setReviews(data.reviews);
-        setReviewsPagination(data.pagination);
-        setStats(prev => ({ ...prev, reviews: data.pagination.total }));
-      }
+      const limit = 10;
+      const allReviews = await reviewService.getAll();
+      const total = allReviews.length;
+      const totalPages = Math.max(1, Math.ceil(total / limit));
+      const safePage = Math.min(Math.max(page, 1), totalPages);
+      const offset = (safePage - 1) * limit;
+      setReviews(allReviews.slice(offset, offset + limit));
+      setReviewsPagination({
+        currentPage: safePage,
+        totalPages,
+        total,
+        limit
+      });
+      setStats(prev => ({ ...prev, reviews: total }));
     } catch (error) {
       console.error('Erreur lors du chargement des avis:', error);
     } finally {
@@ -146,17 +150,9 @@ const AdminDashboard = () => {
     }
 
     try {
-      const response = await fetch(`/api/contact/messages/${messageId}`, {
-        method: 'DELETE'
-      });
-
-      if (response.ok) {
-        // Recharger les messages
-        await loadContactMessages(messagesPagination.currentPage);
-        console.log('Message supprimé avec succès');
-      } else {
-        console.error('Erreur lors de la suppression du message');
-      }
+      await contactService.delete(messageId);
+      await loadContactMessages(messagesPagination.currentPage);
+      console.log('Message supprimé avec succès');
     } catch (error) {
       console.error('Erreur lors de la suppression:', error);
     }
@@ -165,11 +161,11 @@ const AdminDashboard = () => {
   // Fonctions pour la gestion des offres d'emploi
   const loadJobs = async () => {
     try {
-      const response = await fetch('/api/jobs');
-      const data = await response.json();
+      const data = await jobService.getAll();
       setJobs(data);
     } catch (err) {
-      console.error('Erreur lors du chargement des offres:', err);
+      console.warn('Erreur chargement offres:', err.message);
+      setJobs([]);
     }
   };
 
@@ -177,10 +173,8 @@ const AdminDashboard = () => {
     if (!confirm('Êtes-vous sûr de vouloir supprimer cette offre ?')) return;
 
     try {
-      const response = await fetch(`/api/jobs/${jobId}`, { method: 'DELETE' });
-      if (response.ok) {
-        loadJobs(); // Recharger la liste
-      }
+      await jobService.delete(jobId);
+      loadJobs();
     } catch (err) {
       console.error('Erreur lors de la suppression:', err);
     }
@@ -188,44 +182,25 @@ const AdminDashboard = () => {
 
   const validateJob = async (jobId: number) => {
     try {
-      const response = await fetch(`/api/jobs/${jobId}/status`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ status: 'validated' })
-      });
-      if (response.ok) {
-        loadJobs(); // Recharger la liste
-      }
+      await jobService.update(jobId, { status: 'validated' });
+      loadJobs();
     } catch (err) {
       console.error('Erreur lors de la validation:', err);
     }
   };
 
   // Fonction pour activer/désactiver un compte
-  const toggleAccountStatus = async (type: 'company' | 'student', id: number, currentStatus: string) => {
+  const toggleAccountStatus = async (type: 'company' | 'student', id: number | string, currentStatus: string) => {
     const newStatus = currentStatus === 'active' ? 'inactive' : 'active';
 
     try {
-      const response = await fetch(`/api/${type === 'company' ? 'companies' : 'students'}/${id}/status`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ status: newStatus })
-      });
-
-      if (!response.ok) {
-        throw new Error('Erreur lors du changement de statut');
-      }
-
-      const result = await response.json();
-      if (result.success) {
-        // Recharger les données
-        if (type === 'company') {
-          fetch('/api/companies').then(res => res.json()).then(setCompanies);
-        }
-        alert(`Compte ${newStatus === 'active' ? 'activé' : 'désactivé'} avec succès`);
+      if (type === 'company') {
+        await companyService.update(Number(id), { account_status: newStatus });
+        await loadCompanies();
       } else {
-        throw new Error(result.error || 'Erreur lors du changement de statut');
+        await userService.update(String(id), { account_status: newStatus });
       }
+      alert(`Compte ${newStatus === 'active' ? 'activé' : 'désactivé'} avec succès`);
     } catch (err) {
       console.error('Erreur:', err);
       alert('Erreur: ' + (err instanceof Error ? err.message : 'Erreur inconnue'));
@@ -237,7 +212,7 @@ const AdminDashboard = () => {
 
     // Filtrer par statut
     if (jobsFilter !== 'all') {
-      filtered = filtered.filter((job: any) => {
+      filtered = filtered.filter((job: Job) => {
         if (jobsFilter === 'pending') return job.status !== 'validated';
         if (jobsFilter === 'validated') return job.status === 'validated';
         return true;
@@ -247,7 +222,7 @@ const AdminDashboard = () => {
     // Filtrer par terme de recherche
     if (jobsSearchTerm.trim()) {
       const searchLower = jobsSearchTerm.toLowerCase();
-      filtered = filtered.filter((job: any) =>
+      filtered = filtered.filter((job: Job) =>
         job.title?.toLowerCase().includes(searchLower) ||
         job.company?.toLowerCase().includes(searchLower) ||
         job.location?.toLowerCase().includes(searchLower) ||
@@ -360,7 +335,7 @@ const AdminDashboard = () => {
                   {companies.length === 0 && (
                     <tr><td colSpan={6} className="text-center text-white/50 py-8">Aucune entreprise trouvée.</td></tr>
                   )}
-                  {companies.map((c: any) => (
+                  {companies.map((c: Company) => (
                     <tr key={c.id} className="transition hover:bg-white/5 border-b border-white/10">
                       <td className="py-3 px-3">
                         {c.logo_url ? (
@@ -415,12 +390,8 @@ const AdminDashboard = () => {
                         </button>
                         {c.status !== 'validated' && (
                           <button className="flex items-center gap-1 text-white hover:bg-white/20 px-2 py-1 rounded transition text-sm" title="Valider" onClick={async () => {
-                            await fetch(`/api/companies/${c.id}/status`, {
-                              method: 'PATCH',
-                              headers: { 'Content-Type': 'application/json' },
-                              body: JSON.stringify({ status: 'validated' })
-                            });
-                            fetch('/api/companies').then(res => res.json()).then(setCompanies);
+                            await companyService.update(c.id, { status: 'validated' });
+                            await loadCompanies();
                           }}>
                             <CheckCircle2 className="w-4 h-4" />
                             Valider
@@ -484,7 +455,7 @@ const AdminDashboard = () => {
                   {jobs.length === 0 && (
                     <tr><td colSpan={6} className="text-center text-white/50 py-8">Aucune offre trouvée.</td></tr>
                   )}
-                  {getFilteredJobs().map((j: any) => (
+                  {getFilteredJobs().map((j: Job) => (
                     <tr key={j.id} className="transition hover:bg-white/5 border-b border-white/10">
                       <td className="font-semibold text-white py-3 px-4">{j.title || <span className="text-white/40">—</span>}</td>
                       <td className="py-3 px-4 text-white/70">{j.company || <span className="text-white/40">—</span>}</td>
@@ -549,7 +520,7 @@ const AdminDashboard = () => {
               ) : (
                 <>
                   <div className="space-y-4 mb-4">
-                    {contactMessages.map((message: any) => (
+                    {contactMessages.map((message: ContactMessage) => (
                       <div key={message.id} className="bg-white/5 rounded-xl p-4 border border-white/10 hover:bg-white/10 transition-all">
                         <div className="flex justify-between items-start mb-2">
                           <h4 className="font-semibold text-white text-sm">{message.name}</h4>
@@ -657,7 +628,7 @@ const AdminDashboard = () => {
               ) : (
                 <>
                   <div className="space-y-4 mb-4">
-                    {reviews.map((review: any) => (
+                    {reviews.map((review: Review) => (
                       <div key={review.id} className="bg-white/5 rounded-xl p-4 border border-white/10 hover:bg-white/10 transition-all">
                         <div className="flex justify-between items-start mb-2">
                           <div className="flex items-center gap-3 flex-wrap">
@@ -715,11 +686,7 @@ const AdminDashboard = () => {
                             <button
                               onClick={async () => {
                                 try {
-                                  await fetch(`/api/reviews/${review.id}/moderate`, {
-                                    method: 'PATCH',
-                                    headers: { 'Content-Type': 'application/json' },
-                                    body: JSON.stringify({ status: 'approved' })
-                                  });
+                                  await reviewService.update(review.id, { status: 'approved' });
                                   loadReviews();
                                 } catch (err) {
                                   console.error('Erreur lors de l\'approbation:', err);
@@ -735,11 +702,7 @@ const AdminDashboard = () => {
                             <button
                               onClick={async () => {
                                 try {
-                                  await fetch(`/api/reviews/${review.id}/moderate`, {
-                                    method: 'PATCH',
-                                    headers: { 'Content-Type': 'application/json' },
-                                    body: JSON.stringify({ status: 'rejected' })
-                                  });
+                                  await reviewService.update(review.id, { status: 'rejected' });
                                   loadReviews();
                                 } catch (err) {
                                   console.error('Erreur lors du rejet:', err);
@@ -766,9 +729,7 @@ const AdminDashboard = () => {
                             onClick={async () => {
                               if (confirm('Êtes-vous sûr de vouloir supprimer cet avis ?')) {
                                 try {
-                                  await fetch(`/api/reviews/${review.id}`, {
-                                    method: 'DELETE'
-                                  });
+                                  await reviewService.delete(review.id);
                                   loadReviews();
                                 } catch (err) {
                                   console.error('Erreur lors de la suppression:', err);
@@ -943,21 +904,21 @@ const AdminDashboard = () => {
                 return;
               }
               try {
-                const res = await fetch('/api/jobs', {
-                  method: 'POST',
-                  headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify({
-                    ...newJob,
-                    tags: newJob.tags.split(',').map(t => t.trim()),
-                    salary: newJob.salary || null
-                  })
+                const tags = newJob.tags
+                  ? newJob.tags.split(',').map(t => t.trim()).filter(Boolean)
+                  : undefined;
+                await jobService.create({
+                  ...newJob,
+                  company_id: Number(newJob.company_id),
+                  tags,
+                  salary: newJob.salary || undefined
                 });
-                if (!res.ok) throw new Error('Erreur lors de la publication');
                 showSuccess('Offre publiée avec succès !');
                 setShowJobModal(false);
                 setNewJob({ title: '', description: '', location: '', type: '', salary: '', tags: '', company_id: '' });
-                fetch('/api/jobs').then(res => res.json()).then(setJobs);
-              } catch (err) {
+                // Refresh jobs list
+                loadJobs();
+              } catch {
                 showError('Erreur lors de la publication');
               }
               setJobLoading(false);
@@ -970,7 +931,7 @@ const AdminDashboard = () => {
               <input className="bg-white/10 border border-white/20 rounded-xl px-4 py-3 text-white placeholder-white/50 focus:outline-none focus:ring-2 focus:ring-white/30" placeholder="Tags (séparés par virgule)" value={newJob.tags} onChange={e => setNewJob(j => ({ ...j, tags: e.target.value }))} />
               <select className="bg-white/10 border border-white/20 rounded-xl px-4 py-3 text-white focus:outline-none focus:ring-2 focus:ring-white/30" value={newJob.company_id} onChange={e => setNewJob(j => ({ ...j, company_id: e.target.value }))} required>
                 <option value="" className="bg-gray-900">Sélectionner une entreprise</option>
-                {companies.map((c: any) => <option key={c.id} value={c.id} className="bg-gray-900">{c.name}</option>)}
+                {companies.map((c: Company) => <option key={c.id} value={c.id} className="bg-gray-900">{c.name}</option>)}
               </select>
               <button type="submit" className="mt-2 px-6 py-3 bg-white text-gray-900 rounded-xl hover:bg-gray-100 transition-all font-semibold disabled:opacity-60" disabled={jobLoading}>{jobLoading ? 'Publication...' : 'Publier'}</button>
             </form>
@@ -996,34 +957,35 @@ const AdminDashboard = () => {
                 return;
               }
               try {
-                const res = await fetch(`/api/jobs/${editingJob.id}`, {
-                  method: 'PUT',
-                  headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify({
-                    ...editingJob,
-                    tags: editingJob.tags.split(',').map((t: string) => t.trim()),
-                    salary: editingJob.salary || null
-                  })
+                const tags = Array.isArray(editingJob.tags)
+                  ? editingJob.tags
+                  : editingJob.tags
+                    ? editingJob.tags.split(',').map((t: string) => t.trim()).filter(Boolean)
+                    : undefined;
+                await jobService.update(editingJob.id, {
+                  ...editingJob,
+                  tags,
+                  salary: editingJob.salary || undefined
                 });
-                if (!res.ok) throw new Error('Erreur lors de la mise à jour');
                 showSuccess('Offre mise à jour !');
                 setShowEditModal(false);
                 setEditingJob(null);
-                fetch('/api/jobs').then(res => res.json()).then(setJobs);
-              } catch (err) {
+                // Refresh jobs list
+                loadJobs();
+              } catch {
                 showError('Erreur lors de la mise à jour');
               }
               setJobLoading(false);
             }} className="flex flex-col gap-4">
-              <input className="bg-white/10 border border-white/20 rounded-xl px-4 py-3 text-white placeholder-white/50 focus:outline-none focus:ring-2 focus:ring-white/30" placeholder="Titre" value={editingJob.title} onChange={e => setEditingJob((j: any) => ({ ...j, title: e.target.value }))} required />
-              <textarea className="bg-white/10 border border-white/20 rounded-xl px-4 py-3 text-white placeholder-white/50 focus:outline-none focus:ring-2 focus:ring-white/30 min-h-[80px]" placeholder="Description" value={editingJob.description} onChange={e => setEditingJob((j: any) => ({ ...j, description: e.target.value }))} />
-              <input className="bg-white/10 border border-white/20 rounded-xl px-4 py-3 text-white placeholder-white/50 focus:outline-none focus:ring-2 focus:ring-white/30" placeholder="Lieu" value={editingJob.location} onChange={e => setEditingJob((j: any) => ({ ...j, location: e.target.value }))} />
-              <input className="bg-white/10 border border-white/20 rounded-xl px-4 py-3 text-white placeholder-white/50 focus:outline-none focus:ring-2 focus:ring-white/30" placeholder="Type (CDI, Stage...)" value={editingJob.type} onChange={e => setEditingJob((j: any) => ({ ...j, type: e.target.value }))} />
-              <input className="bg-white/10 border border-white/20 rounded-xl px-4 py-3 text-white placeholder-white/50 focus:outline-none focus:ring-2 focus:ring-white/30" placeholder="Salaire (FCFA)" value={editingJob.salary} onChange={e => setEditingJob((j: any) => ({ ...j, salary: e.target.value }))} />
-              <input className="bg-white/10 border border-white/20 rounded-xl px-4 py-3 text-white placeholder-white/50 focus:outline-none focus:ring-2 focus:ring-white/30" placeholder="Tags (séparés par virgule)" value={editingJob.tags} onChange={e => setEditingJob((j: any) => ({ ...j, tags: e.target.value }))} />
-              <select className="bg-white/10 border border-white/20 rounded-xl px-4 py-3 text-white focus:outline-none focus:ring-2 focus:ring-white/30" value={editingJob.company_id} onChange={e => setEditingJob((j: any) => ({ ...j, company_id: e.target.value }))} required>
+              <input className="bg-white/10 border border-white/20 rounded-xl px-4 py-3 text-white placeholder-white/50 focus:outline-none focus:ring-2 focus:ring-white/30" placeholder="Titre" value={editingJob.title} onChange={e => setEditingJob((j: Job | null) => j ? ({ ...j, title: e.target.value }) : null)} required />
+              <textarea className="bg-white/10 border border-white/20 rounded-xl px-4 py-3 text-white placeholder-white/50 focus:outline-none focus:ring-2 focus:ring-white/30 min-h-[80px]" placeholder="Description" value={editingJob.description} onChange={e => setEditingJob((j: Job | null) => j ? ({ ...j, description: e.target.value }) : null)} />
+              <input className="bg-white/10 border border-white/20 rounded-xl px-4 py-3 text-white placeholder-white/50 focus:outline-none focus:ring-2 focus:ring-white/30" placeholder="Lieu" value={editingJob.location} onChange={e => setEditingJob((j: Job | null) => j ? ({ ...j, location: e.target.value }) : null)} />
+              <input className="bg-white/10 border border-white/20 rounded-xl px-4 py-3 text-white placeholder-white/50 focus:outline-none focus:ring-2 focus:ring-white/30" placeholder="Type (CDI, Stage...)" value={editingJob.type} onChange={e => setEditingJob((j: Job | null) => j ? ({ ...j, type: e.target.value }) : null)} />
+              <input className="bg-white/10 border border-white/20 rounded-xl px-4 py-3 text-white placeholder-white/50 focus:outline-none focus:ring-2 focus:ring-white/30" placeholder="Salaire (FCFA)" value={editingJob.salary} onChange={e => setEditingJob((j: Job | null) => j ? ({ ...j, salary: e.target.value }) : null)} />
+              <input className="bg-white/10 border border-white/20 rounded-xl px-4 py-3 text-white placeholder-white/50 focus:outline-none focus:ring-2 focus:ring-white/30" placeholder="Tags (séparés par virgule)" value={Array.isArray(editingJob.tags) ? editingJob.tags.join(', ') : (editingJob.tags || '')} onChange={e => setEditingJob((j: Job | null) => j ? ({ ...j, tags: e.target.value }) : null)} />
+              <select className="bg-white/10 border border-white/20 rounded-xl px-4 py-3 text-white focus:outline-none focus:ring-2 focus:ring-white/30" value={editingJob.company_id} onChange={e => setEditingJob((j: Job | null) => j ? ({ ...j, company_id: Number(e.target.value) }) : null)} required>
                 <option value="" className="bg-gray-900">Sélectionner une entreprise</option>
-                {companies.map((c: any) => <option key={c.id} value={c.id} className="bg-gray-900">{c.name}</option>)}
+                {companies.map((c: Company) => <option key={c.id} value={c.id} className="bg-gray-900">{c.name}</option>)}
               </select>
               <button type="submit" className="mt-2 px-6 py-3 bg-white text-gray-900 rounded-xl hover:bg-gray-100 transition-all font-semibold disabled:opacity-60" disabled={jobLoading}>{jobLoading ? 'Mise à jour...' : 'Mettre à jour'}</button>
             </form>
@@ -1063,42 +1025,30 @@ const AdminDashboard = () => {
                 if (editingReview) {
                   if (editingReview.content === newReviewResponse) {
                     // Répondre à l'avis
-                    await fetch('/api/reviews', {
-                      method: 'POST',
-                      headers: { 'Content-Type': 'application/json' },
-                      body: JSON.stringify({
-                        user_id: null,
-                        type: 'admin',
-                        content: newReviewResponse,
-                        parent_id: editingReview.id,
-                        user_name: 'Admin',
-                        user_email: 'admin@jobtogo.com'
-                      })
+                    await reviewService.create({
+                      user_id: null,
+                      type: 'admin',
+                      content: newReviewResponse,
+                      parent_id: editingReview.id,
+                      user_name: 'Admin',
+                      user_email: 'admin@jobtogo.com'
                     });
                   } else {
                     // Modifier l'avis
-                    await fetch(`/api/reviews/${editingReview.id}`, {
-                      method: 'PUT',
-                      headers: { 'Content-Type': 'application/json' },
-                      body: JSON.stringify({
-                        content: newReviewResponse,
-                        status: 'approved'
-                      })
+                    await reviewService.update(editingReview.id, {
+                      content: newReviewResponse,
+                      status: 'approved'
                     });
                   }
                 } else {
                   // Poser une nouvelle question
-                  await fetch('/api/reviews', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                      user_id: null,
-                      type: 'admin',
-                      content: newReviewResponse,
-                      parent_id: null,
-                      user_name: 'Admin',
-                      user_email: 'admin@jobtogo.com'
-                    })
+                  await reviewService.create({
+                    user_id: null,
+                    type: 'admin',
+                    content: newReviewResponse,
+                    parent_id: null,
+                    user_name: 'Admin',
+                    user_email: 'admin@jobtogo.com'
                   });
                 }
 

@@ -1,4 +1,4 @@
-import { Sparkles, CheckCircle, Users, Shield, Zap, Heart, Mail, Phone, Target, Briefcase, GraduationCap, Building } from 'lucide-react';
+import { Sparkles, Users, Shield, Zap, Heart, Mail, Phone, Target, Briefcase, GraduationCap, Building } from 'lucide-react';
 
 const EnSavoirPlusPage = () => (
   <div className="min-h-screen bg-gradient-to-br from-gray-50 via-white to-gray-100">

@@ -1,6 +1,18 @@
 import React, { useState } from 'react';
 import { Mail, MessageCircle, Send, Edit3 } from 'lucide-react';
 
+interface ResponseData {
+    candidateEmail: string;
+    candidatePhone: string;
+    jobTitle: string;
+    companyName: string;
+    responseMessage: string;
+    sendEmail: boolean;
+    sendWhatsApp: boolean;
+    modifiedEmailMessage: string | null;
+    modifiedWhatsAppMessage: string | null;
+}
+
 interface AutoResponseModalProps {
     isOpen: boolean;
     onClose: () => void;
@@ -12,7 +24,7 @@ interface AutoResponseModalProps {
     };
     jobTitle: string;
     companyName: string;
-    onSend: (data: any) => void;
+    onSend: (data: ResponseData) => void;
 }
 
 const AutoResponseModal: React.FC<AutoResponseModalProps> = ({

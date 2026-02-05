@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import axios from 'axios';
-import { MessageCircle, ThumbsUp, Reply, Star, User, Clock, Send, Filter, Sparkles, Heart, HelpCircle } from 'lucide-react';
+import { MessageCircle, Reply, Star, User, Clock, Send, Filter, Sparkles, Heart, HelpCircle } from 'lucide-react';
 import { useToastContext } from '../contexts/ToastContext';
 
 interface Review {

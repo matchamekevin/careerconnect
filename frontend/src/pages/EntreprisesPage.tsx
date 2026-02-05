@@ -1,6 +1,8 @@
 import React, { useEffect, useState } from 'react';
 import { Building, MapPin, Globe, Briefcase, Sparkles, Search } from 'lucide-react';
 import CompanyProfileModal from '../components/CompanyProfileModal';
+import { Company } from '../utils/supabase';
+import { companyService } from '../services/api';
 import { useToastContext } from '../contexts/ToastContext';
 
 const EntreprisesPage = () => {
@@ -11,22 +13,18 @@ const EntreprisesPage = () => {
   const { showError } = useToastContext();
 
   useEffect(() => {
-    fetch('/api/companies')
-      .then(res => {
-        if (!res.ok) throw new Error('Erreur lors du chargement des entreprises');
-        return res.json();
-      })
+    companyService.getAll()
       .then(data => {
         setCompanies(data);
         setLoading(false);
       })
       .catch(err => {
-        showError(err.message);
+        showError(err.message || 'Erreur lors du chargement des entreprises');
         setLoading(false);
       });
   }, []);
 
-  const filteredCompanies = companies.filter((c: any) => 
+  const filteredCompanies = companies.filter((c: Company) =>
     c.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
     c.sector?.toLowerCase().includes(searchTerm.toLowerCase())
   );
@@ -88,7 +86,7 @@ const EntreprisesPage = () => {
         {/* Companies Grid */}
         {!loading && (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {filteredCompanies.map((c: any, index: number) => (
+            {filteredCompanies.map((c: Company, index: number) => (
               <div
                 key={c.id}
                 className="group bg-white rounded-2xl p-6 border border-gray-100 hover:border-gray-300 hover:shadow-lg transition-all duration-300 cursor-pointer animate-fade-in"
@@ -100,7 +98,7 @@ const EntreprisesPage = () => {
                   <div className="relative mb-4">
                     {c.logo_url ? (
                       <img
-                        src={`http://localhost:5000${c.logo_url}`}
+                        src={c.logo_url}
                         alt="Logo"
                         className="w-20 h-20 rounded-2xl object-cover ring-4 ring-gray-50 group-hover:ring-gray-200 transition-all"
                         onError={(e) => {

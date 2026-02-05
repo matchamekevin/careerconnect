@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { MapPin, Clock, ArrowRight, Briefcase, Building } from 'lucide-react';
 import JobDetailsModal from './JobDetailsModal';
 import { useToastContext } from '../contexts/ToastContext';
+import { jobService } from '../services/api';
 
 interface Job {
   id: number;
@@ -24,23 +25,19 @@ const RecentJobs = () => {
   const { showError } = useToastContext();
 
   useEffect(() => {
-    fetch('/api/jobs')
-      .then((res) => {
-        if (!res.ok) throw new Error('Erreur lors du chargement des offres');
-        return res.json();
-      })
+    jobService.getAll()
       .then((data) => {
         const sortedJobs = data.sort((a: Job, b: Job) => {
-          return new Date(b.posted_at).getTime() - new Date(a.posted_at).getTime();
+          return new Date(b.posted_at || b.created_at || 0).getTime() - new Date(a.posted_at || a.created_at || 0).getTime();
         });
         setJobs(sortedJobs.slice(0, 8));
         setLoading(false);
       })
       .catch((err) => {
-        showError(err.message);
+        showError('Erreur lors du chargement des offres récentes');
         setLoading(false);
       });
-  }, []);
+  }, [showError]);
 
   const getTypeBadge = (type: string) => {
     switch (type) {

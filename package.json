@@ -2,17 +2,16 @@
   "name": "careerconnect-monorepo",
   "private": true,
   "version": "1.0.0",
-  "description": "Plateforme de recrutement CareerConnect - Monorepo",
+  "description": "Plateforme de recrutement CareerConnect - Frontend avec Supabase",
   "workspaces": [
-    "frontend",
-    "backend"
+    "frontend"
   ],
   "scripts": {
-    "dev": "concurrently \"npm run dev --workspace=frontend\" \"npm run dev:server --workspace=backend\"",
+    "dev": "npm run dev --workspace=frontend",
     "build": "npm run build --workspace=frontend",
-    "start": "npm run start --workspace=backend",
+    "start": "npm run preview --workspace=frontend",
     "install:all": "npm install",
-    "clean": "rm -rf frontend/node_modules backend/node_modules node_modules"
+    "clean": "rm -rf frontend/node_modules node_modules"
   },
   "devDependencies": {
     "concurrently": "^8.2.0"

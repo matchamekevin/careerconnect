@@ -4,29 +4,29 @@
 
 CareerConnect est une plateforme moderne de recrutement dédiée aux étudiants togolais, permettant aux entreprises de publier des offres d'emploi et aux étudiants de postuler facilement. L'application offre une interface intuitive avec gestion complète des candidatures, notifications par email et WhatsApp, et un système d'administration robuste.
 
-## �️ Architecture du Projet
+## 🏗️ Architecture du Projet
 
-Ce projet suit une architecture moderne en monorepo avec séparation claire frontend/backend :
-otdepasse2003!
+Ce projet suit une architecture moderne **frontend-only** utilisant Supabase comme backend-as-a-service :
 ```
 careerconnect/
-├── frontend/               # Application React/TypeScript
-│   ├── src/               # Code source
+├── frontend/               # Application React/TypeScript + Supabase
+│   ├── src/
+│   │   ├── components/     # Composants réutilisables
+│   │   ├── pages/         # Pages de l'application
+│   │   ├── services/      # Services Supabase
+│   │   ├── utils/         # Utilitaires
+│   │   └── constants/     # Données constantes
 │   ├── public/            # Assets statiques
-│   ├── package.json       # Dépendances frontend
-│   └── vite.config.ts     # Configuration Vite
-├── backend/               # API Node.js/Express
-│   ├── src/               # Code source backend
-│   ├── config/            # Configurations
-│   ├── scripts/           # Scripts utilitaires
-│   ├── tests/             # Tests
-│   ├── migrations/        # Scripts base de données
-│   ├── uploads/           # Fichiers uploadés
-│   └── package.json       # Dépendances backend
-├── scripts/               # Scripts de démarrage
+│   └── package.json       # Dépendances frontend
 ├── README.md              # Documentation
 └── package.json           # Configuration monorepo
 ```
+
+### Technologies
+- **Frontend**: React 18 + TypeScript + Vite + Tailwind CSS
+- **Backend**: Supabase (PostgreSQL + Auth + Storage)
+- **Déploiement**: Vercel (frontend uniquement)
+- **UI**: Interface monochrome blanc/noir/gris
 
 ## 🎯 Fonctionnalités Principales
 
@@ -61,43 +61,38 @@ careerconnect/
 
 ### Prérequis
 - Node.js (version 18+)
-- PostgreSQL
-- npm ou yarn
+- Compte Supabase (gratuit)
 
 ### Installation
 ```bash
 # Cloner le repository
 git clone <repository-url>
-cd careerconnect
+cd careerconnect/frontend
 
-# Installer toutes les dépendances
+# Installer les dépendances
 npm install
-
-# Ou installer séparément
-npm install  # Dépendances root
-cd frontend && npm install
-cd ../backend && npm install
 ```
 
-### Démarrage Rapide (Tout en un)
-```bash
-# Démarrer frontend + backend simultanément
-./start.sh
+### Configuration Supabase
+1. Créer un projet sur [supabase.com](https://supabase.com)
+2. Récupérer l'URL et la clé API
+3. Modifier `src/utils/supabase.ts` avec vos credentials
+4. Exécuter le script SQL dans `backend/migrations/supabase_schema.sql`
 
-# Ou spécifier explicitement
-./start.sh all
+### Démarrage
+```bash
+# Démarrer l'application
+npm run dev
+
+# Construire pour la production
+npm run build
 ```
 
-### Démarrage Individuel
-
-**Frontend uniquement :**
+### Déploiement
 ```bash
-./start.sh frontend
-```
-
-**Backend uniquement :**
-```bash
-./start.sh backend
+# Déployer sur Vercel
+npm install -g vercel
+vercel --prod
 ```
 
 ### URLs par défaut
@@ -111,42 +106,57 @@ cd ../backend && npm install
 ## 🛠️ Technologies Utilisées
 
 ### Frontend
-- **React 18** - Bibliothèque UI
+- **React 18** - Bibliothèque UI moderne
 - **TypeScript** - Typage statique
-- **Vite** - Outil de build rapide
-- **Tailwind CSS** - Framework CSS
+- **Vite** - Build tool ultra-rapide
+- **Tailwind CSS** - Framework CSS utilitaire
 - **React Router** - Routage SPA
-- **Axios** - Requêtes HTTP
-- **Lucide React** - Icônes
+- **Supabase JS** - Client base de données
+- **Lucide React** - Icônes cohérentes
 
-### Backend
-- **Node.js** - Runtime JavaScript
-- **Express.js** - Framework web
-- **PostgreSQL** - Base de données
-- **Nodemailer** - Envoi d'emails
-- **Multer** - Gestion des uploads
+### Backend-as-a-Service
+- **Supabase** - PostgreSQL + Auth + Storage
+- **Row Level Security** - Sécurité des données
+- **API REST automatique** - Accès direct aux données
+- **Temps réel** - Synchronisation live
 
 ### Fonctionnalités Spéciales
-- **Formatage FCFA** - Composant personnalisé pour les salaires
+- **Design monochrome** - Blanc/noir/gris uniquement
+- **Formatage FCFA** - Composant personnalisé
 - **WhatsApp Integration** - Notifications automatiques
-- **Email Templates** - Templates HTML responsives
-- **File Upload** - Gestion sécurisée des logos
+- **Upload sécurisé** - Gestion des logos entreprise
+
+## 🗄️ Base de Données Supabase
+
+### Tables Principales
+- **users** - Étudiants (profil académique)
+- **companies** - Entreprises (profil professionnel)
+- **jobs** - Offres d'emploi (avec tags et localisation)
+- **applications** - Candidatures (suivi des statuts)
+- **reviews** - Avis utilisateurs
+- **contact_messages** - Support client
+
+### Sécurité Supabase
+- **RLS activé** - Row Level Security
+- **Politiques d'accès** - Contrôle granulaire
+- **Authentification** - Gestion des sessions
+- **Clés API** - Accès sécurisé
 
 ## 📱 Interface Utilisateur
 
-### Design System
-- Palette de couleurs cohérente
-- Composants uniformisés
-- Animations fluides (loading, transitions)
-- Design responsive mobile-first
-- Accessibilité (ARIA labels, navigation clavier)
+### Design System Monochrome
+- **Palette limitée** : Blanc (#FFFFFF), Noir (#000000), Gris (50-900)
+- **Composants cohérents** avec Tailwind CSS
+- **Animations fluides** et micro-interactions
+- **Responsive design** mobile-first
+- **Accessibilité** complète (WCAG compliant)
 
 ### Composants Clés
-- **LoadingPage** - Page de chargement animée
-- **ApplyJobModal** - Formulaire de candidature
-- **Toast** - Notifications utilisateur
-- **FCFAInput** - Champ salaire formaté
-- **SelectWithOther** - Sélecteur avec option "Autre"
+- **LoadingPage** - Animation de chargement élégante
+- **ApplyJobModal** - Candidature simplifiée
+- **Toast** - Notifications non-intrusives
+- **FCFAInput** - Formatage automatique des salaires
+- **SelectWithOther** - Formulaires dynamiques
 
 ## 🔧 Scripts Disponibles
 

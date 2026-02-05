@@ -4,6 +4,7 @@ import { Building, Mail, Lock, Eye, EyeOff, Phone, MapPin, ArrowLeft, Sparkles, 
 import SelectWithOther from '../components/SelectWithOther';
 import { COMPANY_SECTORS, COMPANY_SIZES } from '../constants/formOptions';
 import { useToastContext } from '../contexts/ToastContext';
+import { companyService } from '../services/api';
 
 const CompanyAuth = () => {
   const [isLogin, setIsLogin] = useState(true);
@@ -33,37 +34,36 @@ const CompanyAuth = () => {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (isLogin) {
-      const res = await fetch('/api/login-company', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: formData.email, password: formData.password })
-      });
-      const data = await res.json();
-      if (data.success) {
-        sessionStorage.setItem('companyUser', JSON.stringify(data.company));
+    try {
+      if (isLogin) {
+        // Connexion
+        const company = await companyService.login(formData.email, formData.password);
+        sessionStorage.setItem('companyUser', JSON.stringify(company));
         showSuccess('Connexion réussie !');
         navigate('/company-dashboard');
       } else {
-        showError(data.error || 'Erreur de connexion');
-      }
-    } else {
-      if (formData.password !== formData.confirmPassword) {
-        showError('Les mots de passe ne correspondent pas');
-        return;
-      }
-      const res = await fetch('/api/register-company', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(formData)
-      });
-      const data = await res.json();
-      if (data.success) {
+        // Inscription
+        if (formData.password !== formData.confirmPassword) {
+          showError('Les mots de passe ne correspondent pas');
+          return;
+        }
+        await companyService.register({
+          name: formData.name,
+          contact_name: formData.contactName,
+          email: formData.email,
+          password: formData.password,
+          phone: formData.phone,
+          address: formData.address,
+          sector: formData.sector,
+          size: formData.size
+        });
         showSuccess('Compte entreprise créé avec succès !');
         setIsLogin(true);
-      } else {
-        showError(data.error || 'Erreur lors de la création du compte');
       }
+    } catch (error: unknown) {
+      console.error('Erreur:', error);
+      const message = error instanceof Error ? error.message : 'Une erreur est survenue';
+      showError(message);
     }
   };
 
@@ -243,6 +243,8 @@ const CompanyAuth = () => {
                         accept="image/*"
                         className="hidden"
                         onChange={async (e) => {
+                          // TODO: Implémenter l'upload de logo vers Supabase Storage
+                          /*
                           if (e.target.files && e.target.files[0]) {
                             const formDataFile = new FormData();
                             formDataFile.append('logo', e.target.files[0]);
@@ -255,6 +257,8 @@ const CompanyAuth = () => {
                               setFormData({ ...formData, logo_url: data.url });
                             }
                           }
+                          */
+                          showError('Upload de logo non implémenté pour le moment');
                         }}
                       />
                     </label>

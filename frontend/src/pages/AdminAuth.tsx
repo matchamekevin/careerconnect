@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Shield, Lock, Mail, Sparkles } from 'lucide-react';
 import { useToastContext } from '../contexts/ToastContext';
+import { adminService } from '../services/api';
 
 const AdminAuth = () => {
   const [email, setEmail] = useState('');
@@ -11,19 +12,16 @@ const AdminAuth = () => {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
-    const res = await fetch('/api/login-admin', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email, password })
-    });
-    const data = await res.json();
-    setLoading(false);
-    if (data.success && data.admin) {
-      sessionStorage.setItem('adminUser', JSON.stringify(data.admin));
+    try {
+      const admin = await adminService.login(email, password);
+      sessionStorage.setItem('adminUser', JSON.stringify(admin));
       showSuccess('Connexion admin réussie !');
       window.location.href = '/admin-dashboard';
-    } else {
-      showError(data.error || 'Identifiants invalides');
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : 'Identifiants invalides';
+      showError(message);
+    } finally {
+      setLoading(false);
     }
   };
 

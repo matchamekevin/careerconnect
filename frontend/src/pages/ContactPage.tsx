@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Mail, Phone, MapPin, Send, Clock, User, MessageCircle, Sparkles, HelpCircle, ArrowRight } from 'lucide-react';
 import { useToastContext } from '../contexts/ToastContext';
+import { contactService } from '../services/api';
 
 const ContactPage = () => {
   const [formData, setFormData] = useState({
@@ -32,20 +33,16 @@ const ContactPage = () => {
     }
 
     try {
-      const response = await fetch('/api/contact', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(formData),
+      await contactService.sendMessage({
+        name: formData.name,
+        email: formData.email,
+        subject: formData.subject,
+        message: formData.message,
+        user_type: formData.userType
       });
 
-      const data = await response.json();
-
-      if (data.success) {
-        showSuccess('Votre message a été envoyé avec succès ! Notre équipe vous répondra dans les plus brefs délais.');
-        setFormData({ name: '', email: '', subject: '', userType: '', message: '' });
-      } else {
-        showError(data.error || 'Une erreur est survenue lors de l\'envoi du message.');
-      }
+      showSuccess('Votre message a été envoyé avec succès ! Notre équipe vous répondra dans les plus brefs délais.');
+      setFormData({ name: '', email: '', subject: '', userType: '', message: '' });
     } catch (error) {
       showError('Erreur de connexion. Veuillez vérifier votre connexion internet et réessayer.');
     } finally {

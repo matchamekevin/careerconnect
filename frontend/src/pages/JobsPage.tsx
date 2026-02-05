@@ -3,6 +3,8 @@ import { useSearchParams } from 'react-router-dom';
 import { Search, MapPin, Clock, ArrowRight, Building, Briefcase, Filter, Heart, CheckCircle, ChevronLeft, ChevronRight, Sparkles } from 'lucide-react';
 import ApplyJobModal from '../components/ApplyJobModal';
 import { useToastContext } from '../contexts/ToastContext';
+import { jobService, savedJobsService } from '../services/api';
+import { getImageUrl } from '../utils/api';
 
 interface Job {
   id: number;
@@ -36,17 +38,13 @@ const JobsPage = () => {
 
   useEffect(() => {
     setLoading(true);
-    fetch('/api/jobs')
-      .then((res) => {
-        if (!res.ok) throw new Error('Erreur lors du chargement des offres');
-        return res.json();
-      })
+    jobService.getAll()
       .then((data) => {
         setJobs(data);
         setLoading(false);
       })
       .catch((err) => {
-        showError(err.message);
+        showError(err.message || 'Erreur lors du chargement des offres');
         setLoading(false);
       });
   }, []);
@@ -55,13 +53,13 @@ const JobsPage = () => {
     const student = sessionStorage.getItem('studentUser');
     if (student) {
       const studentId = JSON.parse(student).id;
-      fetch(`/api/student/${studentId}/saved-jobs`)
-        .then(res => res.json())
-        .then(data => setSavedJobIds(Array.isArray(data) ? data.map((job: any) => job.id) : []));
+      savedJobsService.getByStudentId(studentId)
+        .then(data => setSavedJobIds(data.map(job => job.id)))
+        .catch(err => console.warn('Erreur chargement emplois sauvegardés:', err.message));
     }
   }, []);
 
-  let displayJobs = jobs;
+  const displayJobs = jobs;
   const filteredJobs = displayJobs.filter(job => {
     const matchesSearch = job.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
       job.company.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -239,9 +237,9 @@ const JobsPage = () => {
                 <div className="flex flex-col md:flex-row md:items-start gap-4">
                   {/* Logo */}
                   <div className="flex-shrink-0">
-                    {job.logo_url ? (
+                    {getImageUrl(job.logo_url) ? (
                       <img
-                        src={job.logo_url.startsWith('/') ? job.logo_url : `/uploads/${job.logo_url}`}
+                        src={getImageUrl(job.logo_url) || undefined}
                         alt="Logo entreprise"
                         className="w-14 h-14 rounded-xl object-cover ring-2 ring-gray-100"
                       />
@@ -323,17 +321,12 @@ const JobsPage = () => {
                               return;
                             }
                             const studentId = JSON.parse(student).id;
-                            const res = await fetch(`/api/student/${studentId}/save-job`, {
-                              method: 'POST',
-                              headers: { 'Content-Type': 'application/json' },
-                              body: JSON.stringify({ jobId: job.id })
-                            });
-                            const data = await res.json();
-                            if (data.success) {
+                            try {
+                              await savedJobsService.saveJob(studentId, job.id);
                               setSavedJobIds(prev => [...prev, job.id]);
                               showSuccess('Offre sauvegardée !');
-                            } else {
-                              showError(data.error || 'Erreur lors de la sauvegarde');
+                            } catch (error) {
+                              showError('Erreur lors de la sauvegarde');
                             }
                           }}
                           disabled={savedJobIds.includes(job.id)}
@@ -420,7 +413,14 @@ const JobsPage = () => {
         )}
 
         {applyJobId && (
-          <ApplyJobModal jobId={applyJobId} onClose={() => setApplyJobId(null)} />
+          <ApplyJobModal
+            jobId={applyJobId}
+            onClose={() => setApplyJobId(null)}
+            studentId={(() => {
+              const studentUser = sessionStorage.getItem('studentUser');
+              return studentUser ? JSON.parse(studentUser).id : undefined;
+            })()}
+          />
         )}
       </div>
     </div>

@@ -1,20 +1,23 @@
 import React, { useState, useEffect } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { User, FileText, Heart, Bell, Briefcase, MapPin, Clock, Trash2, ArrowRight, Sparkles, GraduationCap, Building } from 'lucide-react';
+import { User as UserIcon, FileText, Heart, Bell, Briefcase, MapPin, Clock, Trash2, ArrowRight, Sparkles, GraduationCap, Building } from 'lucide-react';
 import ApplyJobModal from '../components/ApplyJobModal';
 import { useLocalStorage } from '../hooks/useStorage';
 import SelectWithOther from '../components/SelectWithOther';
 import { STUDY_LEVELS, STUDY_FIELDS_TOGO, UNIVERSITIES_TOGO } from '../constants/formOptions';
 import { useToastContext } from '../contexts/ToastContext';
+import { applicationService, userService, savedJobsService } from '../services/api';
+import type { User, Job, Application } from '../utils/supabase.ts';
 
 const StudentDashboard = () => {
+  const { showSuccess, showError } = useToastContext();
   const [activeTab, setActiveTab] = useLocalStorage('studentDashboardActiveTab', 'overview');
   const [showProfileEdit, setShowProfileEdit] = useLocalStorage('studentDashboardShowProfileEdit', false);
-  const [user, setUser] = useState<any>(null);
-  const [applications, setApplications] = useState<any[]>([]);
-  const [savedJobs, setSavedJobs] = useState<any[]>([]);
+  const [user, setUser] = useState<User | null>(null);
+  const [applications, setApplications] = useState<Application[]>([]);
+  const [savedJobs, setSavedJobs] = useState<Job[]>([]);
   const [profileCompletion, setProfileCompletion] = useState(0);
-  const [recommendations, setRecommendations] = useState<any[]>([]);
+  const [recommendations, setRecommendations] = useState<Job[]>([]);
   const [notificationsCount, setNotificationsCount] = useState(0);
   const [applyJobId, setApplyJobId] = useState<number | null>(null);
   const location = useLocation();
@@ -23,7 +26,13 @@ const StudentDashboard = () => {
   useEffect(() => {
     const userData = sessionStorage.getItem('studentUser');
     if (userData) {
-      setUser(JSON.parse(userData));
+      try {
+        setUser(JSON.parse(userData));
+      } catch (error) {
+        console.warn('Données étudiant invalides dans sessionStorage');
+        sessionStorage.removeItem('studentUser');
+        navigate('/student-auth');
+      }
     }
 
     const urlParams = new URLSearchParams(location.search);
@@ -40,8 +49,16 @@ const StudentDashboard = () => {
 
   useEffect(() => {
     if (user && user.id) {
-      fetch(`/api/student/${user.id}/applications`).then(res => res.json()).then(data => setApplications(Array.isArray(data) ? data : []));
-      fetch(`/api/student/${user.id}/saved-jobs`).then(res => res.json()).then(data => setSavedJobs(Array.isArray(data) ? data : []));
+      // Charger les candidatures
+      applicationService.getByStudentId(user.id)
+        .then(data => setApplications(Array.isArray(data) ? data : []))
+        .catch(err => console.warn('Erreur chargement candidatures:', err.message));
+
+      // Charger les emplois sauvegardés
+      savedJobsService.getByStudentId(user.id)
+        .then(data => setSavedJobs(Array.isArray(data) ? data : []))
+        .catch(err => console.warn('Erreur chargement emplois sauvegardés:', err.message));
+
       let filled = 0;
       if (user.first_name) filled++;
       if (user.last_name) filled++;
@@ -50,8 +67,12 @@ const StudentDashboard = () => {
       if (user.level) filled++;
       if (user.field) filled++;
       setProfileCompletion(Math.round((filled / 6) * 100));
-      fetch(`/api/student/${user.id}/recommendations`).then(res => res.json()).then(data => setRecommendations(Array.isArray(data) ? data : []));
-      fetch(`/api/student/${user.id}/notifications/count`).then(res => res.json()).then(data => setNotificationsCount(data.count || 0));
+
+      // TODO: Implémenter les recommandations dans Supabase
+      // fetch(`/api/student/${user.id}/recommendations`).then(res => res.json()).then(data => setRecommendations(Array.isArray(data) ? data : []));
+
+      // TODO: Implémenter les notifications dans Supabase
+      // fetch(`/api/student/${user.id}/notifications/count`).then(res => res.json()).then(data => setNotificationsCount(data.count || 0));
     }
   }, [user]);
 
@@ -76,7 +97,7 @@ const StudentDashboard = () => {
     { id: 'overview', label: 'Vue d\'ensemble', icon: Sparkles },
     { id: 'applications', label: 'Candidatures', icon: FileText },
     { id: 'saved', label: 'Sauvegardées', icon: Heart },
-    { id: 'profile', label: 'Mon profil', icon: User },
+    { id: 'profile', label: 'Mon profil', icon: UserIcon },
   ];
 
   return (
@@ -91,7 +112,7 @@ const StudentDashboard = () => {
                   <img src={user.profile_picture_url} alt="Profil" className="w-16 h-16 rounded-2xl object-cover ring-4 ring-gray-200" />
                 ) : (
                   <div className="w-16 h-16 rounded-2xl bg-gray-900 flex items-center justify-center text-2xl font-bold text-white shadow-lg">
-                    {user ? user.first_name?.[0] : <User className="h-8 w-8" />}
+                    {user && user.first_name ? user.first_name[0].toUpperCase() : <UserIcon className="h-8 w-8" />}
                   </div>
                 )}
                 <div className="absolute -bottom-1 -right-1 w-5 h-5 bg-gray-700 rounded-full border-2 border-white"></div>
@@ -367,14 +388,12 @@ const StudentDashboard = () => {
                       className="flex items-center gap-1 px-3 py-1.5 bg-gray-200 text-gray-700 rounded-xl hover:bg-gray-300 transition-colors text-sm font-medium"
                       onClick={async () => {
                         if (!user) return;
-                        const res = await fetch(`/api/student/${user.id}/saved-job/${job.id}`, {
-                          method: 'DELETE',
-                        });
-                        const data = await res.json();
-                        if (data.success) {
+                        try {
+                          await savedJobsService.removeSavedJob(user.id, job.id);
                           setSavedJobs((prev) => prev.filter((j) => j.id !== job.id));
-                        } else {
-                          alert(data.error || 'Erreur lors de la suppression');
+                          showSuccess('Offre retirée des sauvegardées');
+                        } catch (error) {
+                          showError('Erreur lors de la suppression');
                         }
                       }}
                     >
@@ -398,7 +417,7 @@ const StudentDashboard = () => {
         {activeTab === 'profile' && user && (
           <div className="bg-white/80 backdrop-blur-sm rounded-2xl p-8 max-w-2xl mx-auto border border-gray-200 shadow-sm">
             <h3 className="text-xl font-bold text-gray-900 mb-6 flex items-center gap-2">
-              <User className="h-5 w-5 text-gray-700" />
+              <UserIcon className="h-5 w-5 text-gray-700" />
               Mon profil
             </h3>
             
@@ -450,7 +469,7 @@ const StudentDashboard = () => {
                     ×
                   </button>
                   <h3 className="text-xl font-bold mb-6 flex items-center gap-2">
-                    <User className="h-5 w-5 text-gray-700" />
+                    <UserIcon className="h-5 w-5 text-gray-700" />
                     Modifier mon profil
                   </h3>
                   <StudentProfileForm user={user} setUser={setUser} onClose={() => setShowProfileEdit(false)} />
@@ -461,7 +480,11 @@ const StudentDashboard = () => {
         )}
 
         {applyJobId && (
-          <ApplyJobModal jobId={applyJobId} onClose={() => setApplyJobId(null)} />
+          <ApplyJobModal
+            jobId={applyJobId}
+            onClose={() => setApplyJobId(null)}
+            studentId={user?.id}
+          />
         )}
       </div>
     </div>
@@ -471,7 +494,7 @@ const StudentDashboard = () => {
 export default StudentDashboard;
 
 // Composant formulaire édition profil étudiant
-const StudentProfileForm = ({ user, setUser, onClose }: { user: any, setUser: any, onClose?: () => void }) => {
+const StudentProfileForm = ({ user, setUser, onClose }: { user: User, setUser: (user: User) => void, onClose?: () => void }) => {
   const [form, setForm] = useState({
     first_name: user.first_name || '',
     last_name: user.last_name || '',
@@ -492,19 +515,14 @@ const StudentProfileForm = ({ user, setUser, onClose }: { user: any, setUser: an
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    const res = await fetch(`/api/student/${user.id}`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(form)
-    });
-    const data = await res.json();
-    if (data.success) {
+    try {
+      await userService.update(user.id, form);
       showSuccess('Profil mis à jour !');
       setUser({ ...user, ...form });
       localStorage.setItem('studentUser', JSON.stringify({ ...user, ...form }));
       if (onClose) onClose();
-    } else {
-      showError(data.error || 'Erreur lors de la mise à jour');
+    } catch (error) {
+      showError('Erreur lors de la mise à jour du profil');
     }
   };
 
